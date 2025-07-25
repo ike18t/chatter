@@ -22,7 +22,9 @@ from .tool_manager import ToolManager
 def _check_tts_availability() -> bool:
     """Check if TTS dependencies are available."""
     try:
-        from kokoro import KPipeline  # noqa: F401
+        import kokoro
+        # Test that we can actually use it
+        _ = kokoro.__name__  # Use the import
         return True
     except ImportError:
         print("Warning: kokoro-tts not available. Install with: pip install kokoro soundfile")
@@ -267,7 +269,12 @@ class AudioRecorder:
         """Test if microphone permissions are properly granted."""
         try:
             test_audio = []
-            def permission_test_callback(indata, frames, time, status):
+            def permission_test_callback(
+            indata: NDArray[np.float32], 
+            frames: int, 
+            time: float, 
+            status: Optional['sd.CallbackFlags']
+        ) -> None:
                 if status:
                     print(f"⚠️  Audio stream status: {status}")
                 test_audio.append(indata.copy())
@@ -344,7 +351,12 @@ class AudioRecorder:
             try:
                 print("Testing audio stream creation...")
                 test_data = []
-                def test_callback(indata, frames, time, status):
+                def test_callback(
+                    indata: NDArray[np.float32], 
+                    frames: int, 
+                    time: float, 
+                    status: Optional['sd.CallbackFlags']
+                ) -> None:
                     test_data.append(indata.copy())
 
                 # Test with system default device
@@ -436,7 +448,12 @@ class AudioRecorder:
         """Internal method to record audio continuously."""
         print("🎤 _record_audio thread started!")
 
-        def audio_callback(indata, frames, time, status):
+        def audio_callback(
+            indata: NDArray[np.float32], 
+            frames: int, 
+            time: float, 
+            status: Optional['sd.CallbackFlags']
+        ) -> None:
             if status:
                 print(f"Audio callback status: {status}")
             if self.recording:
