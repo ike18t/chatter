@@ -1,20 +1,25 @@
+# Standard library imports
+import io
+import os
+import re
+import subprocess
+import threading
+import time
+import wave
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Dict, Generator, List, Optional, Tuple
+
+# Third-party imports
 import gradio as gr
 import numpy as np
 import ollama
-import whisper
 import sounddevice as sd
-import threading
-import time
-import subprocess
-import re
-import os
+import whisper
+
+# Local imports
 from .tool_manager import ToolManager
-import io
-import wave
-from pathlib import Path
-from typing import Optional, Tuple, List, Generator, Dict
-from dataclasses import dataclass
-from enum import Enum
 
 try:
     from kokoro import KPipeline
@@ -25,17 +30,27 @@ except ImportError:
     print("Warning: kokoro-tts not available. Install with: pip install kokoro soundfile")
 
 
-# Configuration
-@dataclass
+# Audio processing constants
+MIN_AUDIO_DURATION = 0.1  # seconds
+MIN_AUDIO_RMS_THRESHOLD = 0.001
+AUDIO_TEST_DURATION = 0.5  # seconds
+PERMISSION_TEST_SLEEP = 0.5  # seconds
+
+
+@dataclass(frozen=True)
 class Config:
-    """Application configuration."""
-    DEEPSEEK_MODEL = "llama3.1:8b"  # Known tool-capable model for testing
-    WHISPER_MODEL = "tiny"
-    SAMPLE_RATE = 16000
-    TTS_SAMPLE_RATE = 24000
-    SERVER_HOST = "0.0.0.0"
-    SERVER_PORT = 7860
-    SYSTEM_PROMPT = """
+    """Application configuration (immutable).
+    
+    This configuration class is frozen to prevent accidental modification
+    after initialization, ensuring consistent behavior throughout the application.
+    """
+    DEEPSEEK_MODEL: str = "llama3.1:8b"  # Known tool-capable model
+    WHISPER_MODEL: str = "tiny"
+    SAMPLE_RATE: int = 16000  # Standard rate for speech recognition
+    TTS_SAMPLE_RATE: int = 24000  # Kokoro TTS optimal sample rate
+    SERVER_HOST: str = "0.0.0.0"
+    SERVER_PORT: int = 7860
+    SYSTEM_PROMPT: str = """
         You are a friendly (but humorous) chat bot. Your output will be spoken so try to make it sound like natural language.
 
         When you search the web, trust and use the search results since they contain current information that may be more accurate than your training data.
@@ -100,10 +115,10 @@ class PersonaManager:
     def get_persona_prompt(self, persona_name: str) -> str:
         """Get the system prompt for a specific persona."""
         base_prompt = self.personas.get(persona_name, Config.SYSTEM_PROMPT)
-        
+
         # Add web search instruction to all personas (unless it's already there)
         web_search_instruction = "\n\nWhen you search the web, trust and use the search results since they contain current information that may be more accurate than your training data."
-        
+
         if web_search_instruction.strip() not in base_prompt:
             return base_prompt + web_search_instruction
         else:
@@ -254,7 +269,7 @@ class AudioRecorder:
                     print(f"⚠️  Audio stream status: {status}")
                 test_audio.append(indata.copy())
 
-            # Record for 0.5 seconds to test permissions using system default
+            # Record for test duration to test permissions using system default
             print("Testing with system default device")
 
             with sd.InputStream(
@@ -264,7 +279,7 @@ class AudioRecorder:
                 dtype=np.float32,
                 blocksize=1024
             ):
-                time.sleep(0.5)
+                time.sleep(AUDIO_TEST_DURATION)
 
             if test_audio:
                 audio_data = np.concatenate(test_audio)
@@ -282,7 +297,7 @@ class AudioRecorder:
                 else:
                     max_val = np.max(np.abs(audio_data))
                     print(f"✅ Microphone working! Max audio level: {max_val:.6f}")
-                    if max_val < 0.001:
+                    if max_val < MIN_AUDIO_RMS_THRESHOLD:
                         print("⚠️  Audio level very low - check microphone volume or speak louder")
             else:
                 print("⚠️  No audio data captured during permission test")
@@ -485,12 +500,12 @@ class TranscriptionService:
 
             # Check if audio is too short
             duration = len(audio_data) / sample_rate
-            if duration < 0.1:
-                return None, f"❌ Audio too short: {duration:.2f}s (minimum 0.1s)"
+            if duration < MIN_AUDIO_DURATION:
+                return None, f"❌ Audio too short: {duration:.2f}s (minimum {MIN_AUDIO_DURATION}s)"
 
             # Check if audio is too quiet
             rms = np.sqrt(np.mean(audio_data**2))
-            if rms < 0.001:
+            if rms < MIN_AUDIO_RMS_THRESHOLD:
                 return None, f"❌ Audio too quiet: RMS {rms:.6f} (try speaking louder)"
 
             # Normalize audio for Whisper (Whisper expects float32 in range [-1, 1])
@@ -571,8 +586,8 @@ class LLMService:
                 print(f"🔧 Model made {len(tool_calls)} tool calls")
                 # Process tool calls using ToolManager
                 messages_with_tools = self.tool_manager.process_tool_calls(
-                    tool_calls, 
-                    messages, 
+                    tool_calls,
+                    messages,
                     response.message.content
                 )
 
@@ -649,8 +664,8 @@ class LLMService:
                 # Process tool calls using ToolManager
                 try:
                     messages_with_tools = self.tool_manager.process_tool_calls(
-                        tool_calls, 
-                        messages, 
+                        tool_calls,
+                        messages,
                         accumulated_response
                     )
                     print(f"🔍 STREAMING: Tool processing completed with {len(messages_with_tools)} messages")
