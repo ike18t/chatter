@@ -265,7 +265,9 @@ class AudioRecorder:
 
         # Check audio devices on initialization
         try:
-            from sounddevice import DeviceList, DeviceInfo
+            import sounddevice as sd
+            DeviceList = List[Dict[str, Union[str, int, float]]]
+            DeviceInfo = Dict[str, Union[str, int, float]]
             
             devices = cast(DeviceList, sd.query_devices())
             print("Available audio devices:")
