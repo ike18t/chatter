@@ -44,7 +44,7 @@ class HistoryEntry(TypedDict):
 
 # Gradio interface types
 GradioHistory = list[list[str]]
-AudioTuple = Optional[tuple[int, NDArray[np.float32]]]
+AudioTuple = tuple[int, NDArray[np.float32]] | None
 ProcessingYield = tuple[str, bool, GradioHistory, AudioTuple]
 GradioUpdate = dict[str, str | bool]
 
@@ -131,7 +131,7 @@ class PersonaManager:
         # Load all .md files from the Prompts directory
         for persona_file in sorted(self.prompts_dir.glob("*.md")):
             try:
-                with open(persona_file, encoding="utf-8") as f:
+                with persona_file.open(encoding="utf-8") as f:
                     content = f.read().strip()
 
                 # Extract persona name from filename (remove number prefix and .md extension)
@@ -268,8 +268,8 @@ class AudioRecorder:
 
             def permission_test_callback(
                 indata: NDArray[np.float32],
-                frames: int,
-                time: float,
+                _frames: int,
+                _time: float,
                 status: Optional["sd.CallbackFlags"],
             ) -> None:
                 if status:
@@ -361,9 +361,9 @@ class AudioRecorder:
 
                 def test_callback(
                     indata: NDArray[np.float32],
-                    frames: int,
-                    time: float,
-                    status: Optional["sd.CallbackFlags"],
+                    _frames: int,
+                    _time: float,
+                    _status: Optional["sd.CallbackFlags"],
                 ) -> None:
                     test_data.append(indata.copy())
 
@@ -474,8 +474,8 @@ class AudioRecorder:
 
         def audio_callback(
             indata: NDArray[np.float32],
-            frames: int,
-            time: float,
+            _frames: int,
+            _time: float,
             status: Optional["sd.CallbackFlags"],
         ) -> None:
             if status:
@@ -566,13 +566,14 @@ class TranscriptionService:
                 return None, "❌ Audio contains no signal (all zeros)"
 
             # Resample to 16kHz if needed (Whisper's expected sample rate)
-            if sample_rate != 16000:
-                print(f"Resampling from {sample_rate} Hz to 16000 Hz...")
+            whisper_sample_rate = 16000
+            if sample_rate != whisper_sample_rate:
+                print(f"Resampling from {sample_rate} Hz to {whisper_sample_rate} Hz...")
                 from scipy import signal
 
-                num_samples = int(len(audio_data) * 16000 / sample_rate)
+                num_samples = int(len(audio_data) * whisper_sample_rate / sample_rate)
                 audio_data = signal.resample(audio_data, num_samples)
-                sample_rate = 16000
+                sample_rate = whisper_sample_rate
                 print(f"Resampled audio shape: {audio_data.shape}")
 
             print("Sending to Whisper for transcription...")
@@ -856,7 +857,7 @@ class TTSService:
 
         return cleaned_text
 
-    def synthesize(
+    def synthesize(  # noqa: PLR0915
         self, text: str, persona_name: str = "Default"
     ) -> tuple[NDArray[np.float32] | None, str]:
         """Convert text to speech using persona-specific Kokoro voice."""
@@ -909,25 +910,26 @@ class TTSService:
 
                             if audio_len > 0:
                                 # Convert PyTorch tensor to numpy array
+                                processed_audio = audio
                                 if hasattr(audio, "detach") and not isinstance(
                                     audio, np.ndarray
                                 ):  # It's a PyTorch tensor
-                                    audio = cast(
+                                    processed_audio = cast(
                                         NDArray[np.float32],
                                         audio.detach().cpu().numpy(),
                                     )
-                                    print(f"Converted tensor to numpy: {audio.shape}")
+                                    print(f"Converted tensor to numpy: {processed_audio.shape}")
 
                                 # Ensure audio is numpy array and float32
-                                if isinstance(audio, np.ndarray):
-                                    if audio.dtype != np.float32:
-                                        audio = cast(
+                                if isinstance(processed_audio, np.ndarray):
+                                    if processed_audio.dtype != np.float32:
+                                        processed_audio = cast(
                                             NDArray[np.float32],
-                                            audio.astype(np.float32),
+                                            processed_audio.astype(np.float32),
                                         )
                                     else:
-                                        audio = cast(NDArray[np.float32], audio)
-                                    audio_chunks.append(audio)
+                                        processed_audio = cast(NDArray[np.float32], processed_audio)
+                                    audio_chunks.append(processed_audio)
                                     print(f"Added chunk {chunk_count} to list")
                         except Exception as chunk_error:
                             print(
@@ -1148,7 +1150,7 @@ class VoiceChatInterface:
     def __init__(self, assistant: VoiceAssistant):
         self.assistant = assistant
 
-    def respond_to_message(self, message: str, history: list[list[str]]) -> str:
+    def respond_to_message(self, message: str, _history: list[list[str]]) -> str:
         """Process a text message and return AI response."""
         # Add user message to conversation
         self.assistant.conversation.add_user_message(message)
@@ -1172,7 +1174,7 @@ class VoiceChatInterface:
         # Return response as-is
         return llm_response
 
-    def create_interface(self) -> gr.Blocks:
+    def create_interface(self) -> gr.Blocks:  # noqa: PLR0915
         """Create a custom interface that combines ChatInterface with voice controls."""
 
         with gr.Blocks(

@@ -53,7 +53,7 @@ class TestToolManager:
         )  # Our enhancement
 
     @pytest.mark.unit
-    def test_message_dict_typing(self, tool_manager: ToolManager) -> None:
+    def test_message_dict_typing(self, _tool_manager: ToolManager) -> None:
         """Test MessageDict typing works correctly."""
         # Test basic message
         basic_message: MessageDict = {"role": "user", "content": "test message"}

@@ -63,7 +63,7 @@ class SearchConfig:
 
 
 def web_search(
-    query: str, max_results: int = 3, config: SearchConfig | None = None
+    query: str, _max_results: int = 3, config: SearchConfig | None = None
 ) -> str:
     """
     Search the web for information when you don't know something.

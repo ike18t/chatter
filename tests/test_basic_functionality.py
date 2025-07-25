@@ -2,9 +2,10 @@
 Basic unit tests for core functionality.
 """
 
-import os
+import contextlib
 import tempfile
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
@@ -19,8 +20,8 @@ class TestPersonaManager:
         """Create temporary directory for persona testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a test persona file
-            test_persona_path = os.path.join(temp_dir, "Test Persona.md")
-            with open(test_persona_path, "w") as f:
+            test_persona_path = Path(temp_dir) / "Test Persona.md"
+            with test_persona_path.open("w") as f:
                 f.write("# Test Persona\n\nThis is a test persona for unit testing.")
             yield temp_dir
 
@@ -72,7 +73,7 @@ class TestConversationManager:
         persona_manager = PersonaManager(temp_dir)
         conv_manager = ConversationManager(persona_manager)
         yield conv_manager
-        os.rmdir(temp_dir)
+        Path(temp_dir).rmdir()
 
     @pytest.mark.unit
     def test_conversation_manager_initialization(
@@ -166,12 +167,9 @@ class TestConversationManager:
     def test_persona_switching(self, conversation_manager: ConversationManager) -> None:
         """Test switching personas."""
         # This might not work if no other personas are available, so we'll just test the method exists
-        try:
+        with contextlib.suppress(KeyError, ValueError):
             conversation_manager.set_persona("NonExistentPersona")
             # If it doesn't raise an error, the persona was set or handled gracefully
-        except (KeyError, ValueError):
-            # Expected if persona doesn't exist
-            pass
 
         # Verify we can get current persona
         current = conversation_manager.get_current_persona()
