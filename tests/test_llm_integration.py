@@ -3,6 +3,7 @@ Integration tests for LLM service with web search capabilities.
 """
 
 import pytest
+from typing import Tuple
 from chatter.main import LLMService, Config
 
 
@@ -10,12 +11,12 @@ class TestLLMIntegration:
     """Test cases for LLM service integration."""
 
     @pytest.fixture
-    def llm_service(self):
+    def llm_service(self) -> LLMService:
         """Create LLM service instance for testing."""
         return LLMService(Config.DEEPSEEK_MODEL)
 
     @pytest.mark.integration
-    def test_llm_service_initialization(self, llm_service):
+    def test_llm_service_initialization(self, llm_service: LLMService) -> None:
         """Test LLM service initializes correctly."""
         assert llm_service.model_name == Config.DEEPSEEK_MODEL
         assert llm_service.tool_manager is not None
@@ -23,7 +24,7 @@ class TestLLMIntegration:
         assert len(llm_service.tools) > 0
 
     @pytest.mark.integration
-    def test_simple_query_response(self, llm_service):
+    def test_simple_query_response(self, llm_service: LLMService) -> None:
         """Test simple query that shouldn't trigger web search."""
         messages = [{"role": "user", "content": "Hello, how are you?"}]
         
@@ -36,7 +37,7 @@ class TestLLMIntegration:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    def test_current_events_query_triggers_search(self, llm_service):
+    def test_current_events_query_triggers_search(self, llm_service: LLMService) -> None:
         """Test that current events queries trigger web search."""
         messages = [{"role": "user", "content": "What is the latest news in artificial intelligence?"}]
         
@@ -50,7 +51,7 @@ class TestLLMIntegration:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    def test_president_query_uses_search(self, llm_service):
+    def test_president_query_uses_search(self, llm_service: LLMService) -> None:
         """Test that president query triggers web search (addressing the reported issue)."""
         messages = [{"role": "user", "content": "Who is the current President of the United States?"}]
         
@@ -65,7 +66,7 @@ class TestLLMIntegration:
         assert any(keyword in response.lower() for keyword in ["search", "unable", "cannot", "results"])
 
     @pytest.mark.integration
-    def test_streaming_response(self, llm_service):
+    def test_streaming_response(self, llm_service: LLMService) -> None:
         """Test streaming response functionality."""
         messages = [{"role": "user", "content": "Tell me about Python programming"}]
         
@@ -83,7 +84,7 @@ class TestLLMIntegration:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    def test_streaming_with_web_search(self, llm_service):
+    def test_streaming_with_web_search(self, llm_service: LLMService) -> None:
         """Test streaming response with web search."""
         messages = [{"role": "user", "content": "What's the weather like today?"}]
         

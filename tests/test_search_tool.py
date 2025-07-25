@@ -10,7 +10,7 @@ class TestWebSearch:
     """Test cases for the web search tool."""
 
     @pytest.mark.unit
-    def test_web_search_basic_functionality(self):
+    def test_web_search_basic_functionality(self) -> None:
         """Test basic web search functionality."""
         # Test search with a simple query
         result = web_search("Python programming language")
@@ -21,7 +21,7 @@ class TestWebSearch:
         assert "search" in result.lower() or "result" in result.lower()
 
     @pytest.mark.unit
-    def test_web_search_current_events(self):
+    def test_web_search_current_events(self) -> None:
         """Test web search for current events."""
         result = web_search("current news today")
         
@@ -29,7 +29,7 @@ class TestWebSearch:
         assert len(result) > 0
 
     @pytest.mark.unit
-    def test_web_search_technical_query(self):
+    def test_web_search_technical_query(self) -> None:
         """Test web search for technical information."""
         result = web_search("artificial intelligence developments 2025")
         
@@ -37,7 +37,7 @@ class TestWebSearch:
         assert len(result) > 0
 
     @pytest.mark.unit
-    def test_web_search_empty_query(self):
+    def test_web_search_empty_query(self) -> None:
         """Test web search with empty query."""
         result = web_search("")
         
@@ -46,7 +46,7 @@ class TestWebSearch:
 
     @pytest.mark.slow
     @pytest.mark.integration
-    def test_web_search_multiple_queries(self):
+    def test_web_search_multiple_queries(self) -> None:
         """Test multiple consecutive web searches."""
         queries = [
             "weather forecast",

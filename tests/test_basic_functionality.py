@@ -5,6 +5,7 @@ Basic unit tests for core functionality.
 import pytest
 import tempfile
 import os
+from typing import Generator
 from chatter.main import PersonaManager, ConversationManager, MessageDict
 
 
@@ -12,7 +13,7 @@ class TestPersonaManager:
     """Test cases for persona management."""
 
     @pytest.fixture
-    def temp_persona_dir(self):
+    def temp_persona_dir(self) -> Generator[str, None, None]:
         """Create temporary directory for persona testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a test persona file
@@ -22,25 +23,25 @@ class TestPersonaManager:
             yield temp_dir
 
     @pytest.fixture
-    def persona_manager(self, temp_persona_dir):
+    def persona_manager(self, temp_persona_dir: str) -> PersonaManager:
         """Create persona manager instance for testing."""
         return PersonaManager(temp_persona_dir)
 
     @pytest.mark.unit
-    def test_persona_manager_initialization(self, persona_manager):
+    def test_persona_manager_initialization(self, persona_manager: PersonaManager) -> None:
         """Test persona manager initializes correctly."""
         assert persona_manager.personas is not None
         assert isinstance(persona_manager.personas, dict)
 
     @pytest.mark.unit
-    def test_get_default_persona(self, persona_manager):
+    def test_get_default_persona(self, persona_manager: PersonaManager) -> None:
         """Test getting default persona."""
         default = persona_manager.get_default_persona()
         assert isinstance(default, str)
         assert len(default) > 0
 
     @pytest.mark.unit
-    def test_get_persona_prompt(self, persona_manager):
+    def test_get_persona_prompt(self, persona_manager: PersonaManager) -> None:
         """Test getting persona prompt."""
         default_persona = persona_manager.get_default_persona()
         prompt = persona_manager.get_persona_prompt(default_persona)
@@ -48,7 +49,7 @@ class TestPersonaManager:
         assert len(prompt) > 0
 
     @pytest.mark.unit
-    def test_voice_settings(self, persona_manager):
+    def test_voice_settings(self, persona_manager: PersonaManager) -> None:
         """Test voice settings functionality."""
         default_persona = persona_manager.get_default_persona()
         settings = persona_manager.get_voice_settings(default_persona)
@@ -61,7 +62,7 @@ class TestConversationManager:
     """Test cases for conversation management."""
 
     @pytest.fixture
-    def conversation_manager(self):
+    def conversation_manager(self) -> Generator[ConversationManager, None, None]:
         """Create conversation manager for testing."""
         temp_dir = tempfile.mkdtemp()
         persona_manager = PersonaManager(temp_dir)
@@ -70,14 +71,14 @@ class TestConversationManager:
         os.rmdir(temp_dir)
 
     @pytest.mark.unit
-    def test_conversation_manager_initialization(self, conversation_manager):
+    def test_conversation_manager_initialization(self, conversation_manager: ConversationManager) -> None:
         """Test conversation manager initializes correctly."""
         assert conversation_manager.history == []
         assert conversation_manager.persona_manager is not None
         assert conversation_manager.current_persona is not None
 
     @pytest.mark.unit
-    def test_add_user_message(self, conversation_manager):
+    def test_add_user_message(self, conversation_manager: ConversationManager) -> None:
         """Test adding user message."""
         test_message = "Hello, this is a test message"
         conversation_manager.add_user_message(test_message)
@@ -87,7 +88,7 @@ class TestConversationManager:
         assert conversation_manager.history[0]["content"] == test_message
 
     @pytest.mark.unit
-    def test_add_assistant_message(self, conversation_manager):
+    def test_add_assistant_message(self, conversation_manager: ConversationManager) -> None:
         """Test adding assistant message."""
         test_response = "Hello, this is a test response"
         conversation_manager.add_assistant_message(test_response)
@@ -97,7 +98,7 @@ class TestConversationManager:
         assert conversation_manager.history[0]["content"] == test_response
 
     @pytest.mark.unit
-    def test_get_messages_for_llm(self, conversation_manager):
+    def test_get_messages_for_llm(self, conversation_manager: ConversationManager) -> None:
         """Test getting messages formatted for LLM."""
         # Add some messages
         conversation_manager.add_user_message("Test user message")
@@ -116,7 +117,7 @@ class TestConversationManager:
         assert assistant_found
 
     @pytest.mark.unit
-    def test_get_chat_history(self, conversation_manager):
+    def test_get_chat_history(self, conversation_manager: ConversationManager) -> None:
         """Test getting formatted chat history."""
         # Add some messages
         conversation_manager.add_user_message("User question")
@@ -132,7 +133,7 @@ class TestConversationManager:
         assert chat_history[1][1] == "Assistant answer"
 
     @pytest.mark.unit
-    def test_clear_conversation(self, conversation_manager):
+    def test_clear_conversation(self, conversation_manager: ConversationManager) -> None:
         """Test clearing conversation history."""
         # Add some messages
         conversation_manager.add_user_message("Test message")
@@ -144,10 +145,8 @@ class TestConversationManager:
         assert len(conversation_manager.history) == 0
 
     @pytest.mark.unit
-    def test_persona_switching(self, conversation_manager):
+    def test_persona_switching(self, conversation_manager: ConversationManager) -> None:
         """Test switching personas."""
-        original_persona = conversation_manager.current_persona
-        
         # This might not work if no other personas are available, so we'll just test the method exists
         try:
             conversation_manager.set_persona("NonExistentPersona")
@@ -165,7 +164,7 @@ class TestMessageDict:
     """Test cases for MessageDict typing."""
 
     @pytest.mark.unit
-    def test_basic_message_dict(self):
+    def test_basic_message_dict(self) -> None:
         """Test basic MessageDict creation."""
         message: MessageDict = {
             "role": "user",
@@ -176,7 +175,7 @@ class TestMessageDict:
         assert message["content"] == "test content"
 
     @pytest.mark.unit
-    def test_tool_message_dict(self):
+    def test_tool_message_dict(self) -> None:
         """Test MessageDict with tool_call_id."""
         message: MessageDict = {
             "role": "tool",
@@ -189,7 +188,7 @@ class TestMessageDict:
         assert message["tool_call_id"] == "search_123"
 
     @pytest.mark.unit
-    def test_message_dict_optional_field(self):
+    def test_message_dict_optional_field(self) -> None:
         """Test MessageDict with optional tool_call_id field."""
         # Should work with or without tool_call_id
         basic_message: MessageDict = {

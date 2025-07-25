@@ -266,13 +266,12 @@ class AudioRecorder:
         # Check audio devices on initialization
         try:
             import sounddevice as sd
-            DeviceList = List[Dict[str, Union[str, int, float]]]
-            DeviceInfo = Dict[str, Union[str, int, float]]
+            from sounddevice import DeviceList, DeviceInfo
             
             devices = cast(DeviceList, sd.query_devices())
             print("Available audio devices:")
             for i, device_info in enumerate(devices):
-                device = device_info
+                device = cast(DeviceInfo, device_info)
                 if device['max_input_channels'] > 0:
                     print(f"  Input device {i}: {device['name']} - Channels: {device['max_input_channels']}, Sample Rate: {device['default_samplerate']}")
 

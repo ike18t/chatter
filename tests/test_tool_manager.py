@@ -10,12 +10,12 @@ class TestToolManager:
     """Test cases for the tool manager."""
 
     @pytest.fixture
-    def tool_manager(self):
+    def tool_manager(self) -> ToolManager:
         """Create tool manager instance for testing."""
         return ToolManager()
 
     @pytest.mark.unit
-    def test_tool_manager_initialization(self, tool_manager):
+    def test_tool_manager_initialization(self, tool_manager: ToolManager) -> None:
         """Test tool manager initializes correctly."""
         assert tool_manager.has_tools is True
         tools = tool_manager.get_tool_definitions()
@@ -23,7 +23,7 @@ class TestToolManager:
         assert len(tools) > 0
 
     @pytest.mark.unit
-    def test_tool_definitions_structure(self, tool_manager):
+    def test_tool_definitions_structure(self, tool_manager: ToolManager) -> None:
         """Test tool definitions have correct structure."""
         tools = tool_manager.get_tool_definitions()
         
@@ -35,7 +35,7 @@ class TestToolManager:
             assert "description" in tool["function"]
 
     @pytest.mark.unit
-    def test_web_search_tool_present(self, tool_manager):
+    def test_web_search_tool_present(self, tool_manager: ToolManager) -> None:
         """Test that web search tool is present."""
         tools = tool_manager.get_tool_definitions()
         
@@ -50,7 +50,7 @@ class TestToolManager:
         assert "CRITICAL" in web_search_tool["function"]["description"]  # Our enhancement
 
     @pytest.mark.unit
-    def test_message_dict_typing(self, tool_manager):
+    def test_message_dict_typing(self, tool_manager: ToolManager) -> None:
         """Test MessageDict typing works correctly."""
         # Test basic message
         basic_message: MessageDict = {
@@ -73,14 +73,14 @@ class TestToolManager:
         assert messages[1]["role"] == "tool"
 
     @pytest.mark.unit
-    def test_tool_count(self, tool_manager):
+    def test_tool_count(self, tool_manager: ToolManager) -> None:
         """Test tool count functionality."""
         count = tool_manager.get_tool_count()
         assert isinstance(count, int)
         assert count > 0
 
     @pytest.mark.integration
-    def test_tool_execution_structure(self, tool_manager):
+    def test_tool_execution_structure(self, tool_manager: ToolManager) -> None:
         """Test tool execution workflow structure."""
         # This tests the structure without actually executing tools
         tools = tool_manager.get_tool_definitions()
