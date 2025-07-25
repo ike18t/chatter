@@ -5,7 +5,6 @@ A tool that uses LLM analysis to extract information from web search results.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import quote
 
 import ollama
@@ -43,6 +42,7 @@ class SearchConfig:
 
     This dataclass is frozen to prevent accidental modification after creation.
     """
+
     # Search behavior
     temporal_prefix: str = "as of today:"
     request_timeout: int = 15
@@ -63,9 +63,7 @@ class SearchConfig:
 
 
 def web_search(
-    query: str,
-    max_results: int = 3,
-    config: Optional[SearchConfig] = None
+    query: str, max_results: int = 3, config: SearchConfig | None = None
 ) -> str:
     """
     Search the web for information when you don't know something.
@@ -100,8 +98,7 @@ def web_search(
 
         if search_result:
             return f"Web search results for '{query}':\n\n{search_result}"
-        else:
-            return _get_fallback_response(query)
+        return _get_fallback_response(query)
 
     except requests.exceptions.RequestException as e:
         return f"Search failed due to network error: {e}"
@@ -159,22 +156,16 @@ def _fetch_search_html(query: str, config: SearchConfig) -> str:
     """
     try:
         url = f"{config.search_base_url}?q={quote(query)}"
-        headers = {
-            'User-Agent': config.user_agent
-        }
+        headers = {"User-Agent": config.user_agent}
 
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=config.request_timeout
-        )
+        response = requests.get(url, headers=headers, timeout=config.request_timeout)
         response.raise_for_status()
         return response.text
 
     except (
         requests.exceptions.RequestException,
         requests.exceptions.HTTPError,
-        requests.exceptions.Timeout
+        requests.exceptions.Timeout,
     ):
         # Re-raise specific network errors
         raise
@@ -183,11 +174,7 @@ def _fetch_search_html(query: str, config: SearchConfig) -> str:
         return ""
 
 
-def _analyze_search_html_with_llm(
-    html: str,
-    query: str,
-    config: SearchConfig
-) -> str:
+def _analyze_search_html_with_llm(html: str, query: str, config: SearchConfig) -> str:
     """
     Use LLM to analyze search HTML and return formatted search results.
 
@@ -206,27 +193,26 @@ def _analyze_search_html_with_llm(
     try:
         # Truncate HTML to avoid token limits
         truncated_html = (
-            html[:config.html_truncation_limit]
+            html[: config.html_truncation_limit]
             if len(html) > config.html_truncation_limit
             else html
         )
 
         analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(
-            query=query,
-            html=truncated_html
+            query=query, html=truncated_html
         )
 
         response = ollama.chat(
             model=config.llm_model,
             messages=[{"role": "user", "content": analysis_prompt}],
-            stream=False
+            stream=False,
         )
 
         analysis_result = response.message.content
         if not analysis_result:
             print("LLM analysis returned no content")
             return ""
-        
+
         analysis_result = analysis_result.strip()
         print(f"LLM analysis completed, length: {len(analysis_result)}")
 
@@ -263,12 +249,12 @@ if __name__ == "__main__":
     test_queries = [
         "Python 3.12 new features",
         "React 19 changes",
-        "who is the current president of the US"
+        "who is the current president of the US",
     ]
 
     for query in test_queries:
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         print(f"Testing: {query}")
-        print('='*50)
+        print("=" * 50)
         result = web_search(query)
         print(result)

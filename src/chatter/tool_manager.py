@@ -5,20 +5,24 @@ Handles tool definitions, execution, and integration with LLM services.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, TypedDict
-from typing_extensions import NotRequired
+from typing import Any, NotRequired, TypedDict
+
 import ollama
+
 
 class SerializedToolCall(TypedDict):
     id: str
     type: str
-    function: Dict[str, str]
+    function: dict[str, str]
+
 
 class MessageDict(TypedDict):
     role: str
     content: str
-    tool_call_id: NotRequired[Optional[str]]  # For tool response messages
-    tool_calls: NotRequired[List[SerializedToolCall]]  # For assistant messages with tool calls
+    tool_call_id: NotRequired[str | None]  # For tool response messages
+    tool_calls: NotRequired[
+        list[SerializedToolCall]
+    ]  # For assistant messages with tool calls
 
 
 @dataclass(frozen=True)
@@ -27,6 +31,7 @@ class ToolConfig:
 
     This dataclass is frozen to prevent accidental modification after creation.
     """
+
     web_search_description: str = (
         "Search the web for current information when you don't know something "
         "or need recent data. Use this when you encounter knowledge gaps, "
@@ -55,7 +60,6 @@ class ToolExecutionError(Exception):
     This exception is raised when a tool fails to execute properly,
     providing more specific error handling than generic exceptions.
     """
-    pass
 
 
 class ToolManager:
@@ -66,7 +70,7 @@ class ToolManager:
     and the main LLM service logic.
     """
 
-    def __init__(self, config: Optional[ToolConfig] = None) -> None:
+    def __init__(self, config: ToolConfig | None = None) -> None:
         """
         Initialize the tool manager.
 
@@ -74,7 +78,7 @@ class ToolManager:
             config: Tool configuration (uses default if not provided)
         """
         self.config = config or ToolConfig()
-        self.available_tools: Dict[str, Any] = {}
+        self.available_tools: dict[str, Any] = {}
         self._load_tools()
 
     def _load_tools(self) -> None:
@@ -85,7 +89,8 @@ class ToolManager:
         """
         try:
             from .search_tool import web_search
-            self.available_tools['web_search'] = web_search
+
+            self.available_tools["web_search"] = web_search
             print("✅ Web search tool loaded successfully")
         except ImportError as e:
             print(f"⚠️  Web search tool not available: {e}")
@@ -99,33 +104,35 @@ class ToolManager:
         """
         return len(self.available_tools) > 0
 
-    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+    def get_tool_definitions(self) -> list[dict[str, Any]]:
         """
         Get tool definitions for LLM.
 
         Returns:
             List of tool definitions in OpenAI function calling format
         """
-        if 'web_search' not in self.available_tools:
+        if "web_search" not in self.available_tools:
             return []
 
-        return [{
-            "type": "function",
-            "function": {
-                "name": "web_search",
-                "description": self.config.web_search_description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "What to search for"
-                        }
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": self.config.web_search_description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "What to search for",
+                            }
+                        },
+                        "required": ["query"],
                     },
-                    "required": ["query"]
-                }
+                },
             }
-        }]
+        ]
 
     def execute_tool(self, tool_name: str, **kwargs: Any) -> str:
         """
@@ -147,11 +154,11 @@ class ToolManager:
         try:
             return self.available_tools[tool_name](**kwargs)
         except Exception as e:
-            raise ToolExecutionError(
-                f"Tool '{tool_name}' execution failed: {e}"
-            ) from e
+            raise ToolExecutionError(f"Tool '{tool_name}' execution failed: {e}") from e
 
-    def serialize_tool_calls(self, tool_calls: List[ollama.ToolCall]) -> List[SerializedToolCall]:
+    def serialize_tool_calls(
+        self, tool_calls: list[ollama.ToolCall]
+    ) -> list[SerializedToolCall]:
         """
         Convert tool calls to serializable format.
 
@@ -163,22 +170,24 @@ class ToolManager:
         """
         return [
             {
-                'id': getattr(tc, 'id', self.config.default_tool_id),
-                'type': 'function',
-                'function': {
-                    'name': tc.function.name,
-                    'arguments': str(tc.function.arguments) if not isinstance(tc.function.arguments, str) else tc.function.arguments
-                }
+                "id": getattr(tc, "id", self.config.default_tool_id),
+                "type": "function",
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": str(tc.function.arguments)
+                    if not isinstance(tc.function.arguments, str)
+                    else tc.function.arguments,
+                },
             }
             for tc in tool_calls
         ]
 
     def process_tool_calls(
         self,
-        tool_calls: List[ollama.ToolCall],
-        messages: List[MessageDict],
-        content: str = ""
-    ) -> List[MessageDict]:
+        tool_calls: list[ollama.ToolCall],
+        messages: list[MessageDict],
+        content: str = "",
+    ) -> list[MessageDict]:
         """
         Process tool calls and return enhanced messages.
 
@@ -202,20 +211,20 @@ class ToolManager:
 
         # Add assistant message with tool calls
         assistant_message: MessageDict = {
-            'role': 'assistant',
-            'content': content,
-            'tool_calls': serialized_calls
+            "role": "assistant",
+            "content": content,
+            "tool_calls": serialized_calls,
         }
-        messages_with_tools: List[MessageDict] = messages + [assistant_message]
+        messages_with_tools: list[MessageDict] = messages + [assistant_message]
 
         # Execute each tool call
         for tool_call in tool_calls:
-            if tool_call.function.name == 'web_search':
+            if tool_call.function.name == "web_search":
                 try:
-                    query = tool_call.function.arguments['query']
+                    query = tool_call.function.arguments["query"]
                     print(f"🔍 Executing search for: {query}")
 
-                    search_result = self.execute_tool('web_search', query=query)
+                    search_result = self.execute_tool("web_search", query=query)
                     print(f"🔍 Search result preview: {search_result[:200]}...")
 
                     # Create enhanced result with instruction
@@ -225,11 +234,11 @@ class ToolManager:
 
                     # Add tool response message
                     tool_response: MessageDict = {
-                        'role': 'tool',
-                        'content': enhanced_result,
-                        'tool_call_id': getattr(
-                            tool_call, 'id', self.config.default_tool_id
-                        )
+                        "role": "tool",
+                        "content": enhanced_result,
+                        "tool_call_id": getattr(
+                            tool_call, "id", self.config.default_tool_id
+                        ),
                     }
                     messages_with_tools.append(tool_response)
 
@@ -237,18 +246,18 @@ class ToolManager:
                     print(f"❌ Tool execution failed: {e}")
                     # Add error message as tool response
                     error_response: MessageDict = {
-                        'role': 'tool',
-                        'content': f"Search failed: {e}",
-                        'tool_call_id': getattr(
-                            tool_call, 'id', self.config.default_tool_id
-                        )
+                        "role": "tool",
+                        "content": f"Search failed: {e}",
+                        "tool_call_id": getattr(
+                            tool_call, "id", self.config.default_tool_id
+                        ),
                     }
                     messages_with_tools.append(error_response)
 
         # Add priority message to encourage using search results
         priority_message: MessageDict = {
-            'role': 'system',
-            'content': self.config.priority_message
+            "role": "system",
+            "content": self.config.priority_message,
         }
         messages_with_tools.insert(-1, priority_message)
 

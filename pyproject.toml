@@ -107,3 +107,79 @@ reportOptionalOperand = "error"
 
 # Stub configuration
 stubPath = "./typings"  # For custom stub files if needed
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.4",
+]
+
+[tool.ruff]
+# Basic configuration
+target-version = "py313"
+line-length = 88
+indent-width = 4
+
+# Include/exclude paths
+include = ["src/**/*.py", "tests/**/*.py"]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+# Enable sensible rule sets
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+    "N",   # pep8-naming
+    "C4",  # flake8-comprehensions
+    "PIE", # flake8-pie
+    "T20", # flake8-print
+    "RET", # flake8-return
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8-use-pathlib
+    "PL",  # pylint
+    "TRY", # tryceratops
+]
+
+# Ignore specific rules that may conflict with our codebase
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "T201",   # Print statements (we use them for debugging)
+    "PLR0913", # Too many arguments
+    "PLR0912", # Too many branches
+    "PLR0911", # Too many return statements
+    "TRY003",  # Avoid specifying long messages outside exception class
+    "B008",    # Do not perform function calls in argument defaults
+]
+
+[tool.ruff.format]
+# Formatting configuration
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.ruff.lint.isort]
+# Import sorting
+known-first-party = ["chatter"]
+force-single-line = false
+lines-after-imports = 2
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.lint.pylint]
+# Pylint-specific settings
+max-args = 10
+max-branches = 15
+max-returns = 8
+max-statements = 60

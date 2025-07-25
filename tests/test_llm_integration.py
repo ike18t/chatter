@@ -2,9 +2,11 @@
 Integration tests for LLM service with web search capabilities.
 """
 
+from typing import cast
+
 import pytest
-from typing import cast, List
-from chatter.main import LLMService, Config, MessageDict
+
+from chatter.main import Config, LLMService, MessageDict
 
 
 class TestLLMIntegration:
@@ -26,10 +28,12 @@ class TestLLMIntegration:
     @pytest.mark.integration
     def test_simple_query_response(self, llm_service: LLMService) -> None:
         """Test simple query that shouldn't trigger web search."""
-        messages = [cast(MessageDict, {"role": "user", "content": "Hello, how are you?"})]
-        
+        messages = [
+            cast(MessageDict, {"role": "user", "content": "Hello, how are you?"})
+        ]
+
         response, status = llm_service.get_response(messages)
-        
+
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
@@ -37,27 +41,48 @@ class TestLLMIntegration:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    def test_current_events_query_triggers_search(self, llm_service: LLMService) -> None:
+    def test_current_events_query_triggers_search(
+        self, llm_service: LLMService
+    ) -> None:
         """Test that current events queries trigger web search."""
-        messages = [cast(MessageDict, {"role": "user", "content": "What is the latest news in artificial intelligence?"})]
-        
+        messages = [
+            cast(
+                MessageDict,
+                {
+                    "role": "user",
+                    "content": "What is the latest news in artificial intelligence?",
+                },
+            )
+        ]
+
         response, status = llm_service.get_response(messages)
-        
+
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
         assert isinstance(status, str)
         # Should show evidence of web search usage
-        assert any(keyword in response.lower() for keyword in ["search", "results", "web", "found"])
+        assert any(
+            keyword in response.lower()
+            for keyword in ["search", "results", "web", "found"]
+        )
 
     @pytest.mark.integration
     @pytest.mark.slow
     def test_president_query_uses_search(self, llm_service: LLMService) -> None:
         """Test that president query triggers web search (addressing the reported issue)."""
-        messages = [cast(MessageDict, {"role": "user", "content": "Who is the current President of the United States?"})]
-        
+        messages = [
+            cast(
+                MessageDict,
+                {
+                    "role": "user",
+                    "content": "Who is the current President of the United States?",
+                },
+            )
+        ]
+
         response, status = llm_service.get_response(messages)
-        
+
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
@@ -65,23 +90,31 @@ class TestLLMIntegration:
         # After our improvements, should use web search and be more cautious
         assert not response.startswith("The current President of the United States is")
         # Should show evidence of search or uncertainty
-        assert any(keyword in response.lower() for keyword in ["search", "unable", "cannot", "results"])
+        assert any(
+            keyword in response.lower()
+            for keyword in ["search", "unable", "cannot", "results"]
+        )
 
     @pytest.mark.integration
     def test_streaming_response(self, llm_service: LLMService) -> None:
         """Test streaming response functionality."""
-        messages = [cast(MessageDict, {"role": "user", "content": "Tell me about Python programming"})]
-        
+        messages = [
+            cast(
+                MessageDict,
+                {"role": "user", "content": "Tell me about Python programming"},
+            )
+        ]
+
         streaming_gen = llm_service.get_streaming_response(messages)
-        chunks: List[str] = []
-        
+        chunks: list[str] = []
+
         # Collect first few chunks
         for i, (chunk_content, _) in enumerate(streaming_gen):
             if chunk_content is not None:
                 chunks.append(chunk_content)
             if i >= 5:  # Limit to first 5 chunks
                 break
-        
+
         assert len(chunks) > 0
         assert all(isinstance(chunk, str) for chunk in chunks)
 
@@ -89,12 +122,17 @@ class TestLLMIntegration:
     @pytest.mark.slow
     def test_streaming_with_web_search(self, llm_service: LLMService) -> None:
         """Test streaming response with web search."""
-        messages = [cast(MessageDict, {"role": "user", "content": "What's the weather like today?"})]
-        
+        messages = [
+            cast(
+                MessageDict,
+                {"role": "user", "content": "What's the weather like today?"},
+            )
+        ]
+
         streaming_gen = llm_service.get_streaming_response(messages)
         search_detected = False
-        chunks: List[str] = []
-        
+        chunks: list[str] = []
+
         # Look for search activity in streaming response
         for i, (chunk_content, _) in enumerate(streaming_gen):
             if chunk_content is not None:
@@ -103,7 +141,9 @@ class TestLLMIntegration:
                     search_detected = True
             if i >= 10:  # Limit to first 10 chunks
                 break
-        
+
         assert len(chunks) > 0
         # Should see search activity in streaming response
-        assert search_detected or any("search" in chunk.lower() for chunk in chunks if chunk is not None)
+        assert search_detected or any(
+            "search" in chunk.lower() for chunk in chunks if chunk is not None
+        )

@@ -3,6 +3,7 @@ Unit tests for web search functionality.
 """
 
 import pytest
+
 from chatter.search_tool import web_search
 
 
@@ -14,7 +15,7 @@ class TestWebSearch:
         """Test basic web search functionality."""
         # Test search with a simple query
         result = web_search("Python programming language")
-        
+
         # Basic assertions
         assert isinstance(result, str)
         assert len(result) > 0
@@ -24,7 +25,7 @@ class TestWebSearch:
     def test_web_search_current_events(self) -> None:
         """Test web search for current events."""
         result = web_search("current news today")
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -32,7 +33,7 @@ class TestWebSearch:
     def test_web_search_technical_query(self) -> None:
         """Test web search for technical information."""
         result = web_search("artificial intelligence developments 2025")
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -40,7 +41,7 @@ class TestWebSearch:
     def test_web_search_empty_query(self) -> None:
         """Test web search with empty query."""
         result = web_search("")
-        
+
         # Should handle empty query gracefully
         assert isinstance(result, str)
 
@@ -48,12 +49,8 @@ class TestWebSearch:
     @pytest.mark.integration
     def test_web_search_multiple_queries(self) -> None:
         """Test multiple consecutive web searches."""
-        queries = [
-            "weather forecast",
-            "latest technology news", 
-            "Python 3.13 features"
-        ]
-        
+        queries = ["weather forecast", "latest technology news", "Python 3.13 features"]
+
         for query in queries:
             result = web_search(query)
             assert isinstance(result, str)
