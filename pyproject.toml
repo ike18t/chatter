@@ -16,6 +16,7 @@ dependencies = [
     "soundfile>=0.12.0",
     "speechrecognition>=3.14.3",
     "pip>=25.1.1",
+    "pyright>=1.1.390",
 ]
 
 [project.scripts]
@@ -24,3 +25,65 @@ chatter = "chatter.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pyright]
+# Basic configuration
+pythonVersion = "3.13"
+pythonPlatform = "All"
+typeCheckingMode = "strict"
+
+# Include/exclude paths
+include = ["src", "tests"]
+exclude = ["**/__pycache__", "**/.DS_Store"]
+
+# Reporting settings
+reportMissingImports = true
+reportMissingTypeStubs = "warning"
+reportUntypedFunctionDecorator = "error"
+reportUntypedClassDecorator = "error"
+reportUntypedBaseClass = "error"
+reportUntypedNamedTuple = "error"
+reportPrivateUsage = "warning"
+reportConstantRedefinition = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportInconsistentConstructor = "error"
+reportOverlappingOverloads = "error"
+reportMissingParameterType = "error"
+reportMissingReturnType = "error"
+reportUnknownParameterType = "error"
+reportUnknownVariableType = "error"
+reportUnknownMemberType = "warning"
+reportMissingTypeArgument = "error"
+reportInvalidTypeVarUse = "error"
+reportCallInDefaultInitializer = "error"
+reportUnnecessaryIsInstance = "warning"
+reportUnnecessaryCast = "warning"
+reportUnnecessaryComparison = "warning"
+reportAssertAlwaysTrue = "warning"
+reportSelfClsParameterName = "error"
+reportImplicitStringConcatenation = "warning"
+reportUndefinedVariable = "error"
+reportUnboundVariable = "error"
+reportInvalidStubStatement = "error"
+reportUnsupportedDunderAll = "error"
+reportUnusedCoroutine = "error"
+
+# Disable some overly strict checks for our use case
+reportUnknownArgumentType = "warning"  # Third-party libraries often lack stubs
+reportUnknownLambdaType = "warning"    # Lambdas can be hard to type
+reportImportCycles = "warning"         # Sometimes unavoidable in complex projects
+
+# Enable some helpful additional checks
+reportShadowedImports = "error"
+reportDuplicateImport = "error"
+reportWildcardImportFromLibrary = "error"
+reportOptionalSubscript = "error"
+reportOptionalMemberAccess = "error"
+reportOptionalCall = "error"
+reportOptionalIterable = "error"
+reportOptionalContextManager = "error"
+reportOptionalOperand = "error"
+
+# Stub configuration
+stubPath = "./typings"  # For custom stub files if needed

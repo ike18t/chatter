@@ -1,19 +1,17 @@
 # Standard library imports
-import io
-import os
 import re
 import subprocess
 import threading
 import time
-import wave
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple, Union
 
 # Third-party imports
 import gradio as gr
 import numpy as np
+from numpy.typing import NDArray
 import ollama
 import sounddevice as sd
 import whisper
@@ -21,13 +19,17 @@ import whisper
 # Local imports
 from .tool_manager import ToolManager
 
-try:
-    from kokoro import KPipeline
-    import soundfile as sf
-    TTS_AVAILABLE = True
-except ImportError:
-    TTS_AVAILABLE = False
-    print("Warning: kokoro-tts not available. Install with: pip install kokoro soundfile")
+def _check_tts_availability() -> bool:
+    """Check if TTS dependencies are available."""
+    try:
+        from kokoro import KPipeline  # noqa: F401
+        return True
+    except ImportError:
+        print("Warning: kokoro-tts not available. Install with: pip install kokoro soundfile")
+        return False
+
+# Constants
+TTS_AVAILABLE = _check_tts_availability()
 
 
 # Audio processing constants
@@ -71,11 +73,12 @@ class PersonaManager:
         if prompts_dir is None:
             # Use the Prompts directory relative to this file
             current_dir = Path(__file__).parent
-            prompts_dir = current_dir / "Prompts"
-
-        self.prompts_dir = Path(prompts_dir)
+            default_prompts_dir = current_dir / "Prompts"
+            self.prompts_dir = default_prompts_dir
+        else:
+            self.prompts_dir = Path(prompts_dir)
         self.personas: Dict[str, str] = {}
-        self.voice_settings: Dict[str, Dict[str, str]] = {}
+        self.voice_settings: Dict[str, Dict[str, Union[str, float]]] = {}
         self.load_personas()
         self.setup_voice_settings()
 
@@ -194,7 +197,7 @@ class PersonaManager:
             }
         }
 
-    def get_voice_settings(self, persona_name: str) -> Dict[str, str]:
+    def get_voice_settings(self, persona_name: str) -> Dict[str, Union[str, float]]:
         """Get voice settings for a specific persona."""
         return self.voice_settings.get(persona_name, self.voice_settings["Default"])
 
@@ -238,7 +241,7 @@ class AudioRecorder:
     def __init__(self, sample_rate: int = Config.SAMPLE_RATE):
         self.sample_rate = sample_rate
         self.recording = False
-        self.audio_data: List[np.ndarray] = []
+        self.audio_data: List[NDArray[np.float32]] = []
         self.record_thread: Optional[threading.Thread] = None
 
         # Check audio devices on initialization

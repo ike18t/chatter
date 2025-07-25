@@ -222,7 +222,12 @@ def _analyze_search_html_with_llm(
             stream=False
         )
 
-        analysis_result = response.message.content.strip()
+        analysis_result = response.message.content
+        if analysis_result is None:
+            print("LLM analysis returned no content")
+            return ""
+        
+        analysis_result = analysis_result.strip()
         print(f"LLM analysis completed, length: {len(analysis_result)}")
 
         return analysis_result
