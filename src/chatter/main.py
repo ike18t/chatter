@@ -262,7 +262,7 @@ class AudioRecorder:
             devices = cast(DeviceList, sd.query_devices())
             print("Available audio devices:")
             for i, device_info in enumerate(devices):
-                device = cast(DeviceInfo, device_info)
+                device = device_info
                 if device['max_input_channels'] > 0:
                     print(f"  Input device {i}: {device['name']} - Channels: {device['max_input_channels']}, Sample Rate: {device['default_samplerate']}")
 
@@ -555,7 +555,7 @@ class TranscriptionService:
                 print(f"Resampling from {sample_rate} Hz to 16000 Hz...")
                 from scipy import signal
                 num_samples = int(len(audio_data) * 16000 / sample_rate)
-                audio_data = cast(NDArray[np.float32], signal.resample(audio_data, num_samples))
+                audio_data = signal.resample(audio_data, num_samples)
                 sample_rate = 16000
                 print(f"Resampled audio shape: {audio_data.shape}")
 
@@ -764,6 +764,7 @@ class TTSService:
         # Initialize Kokoro pipeline
         try:
             # Use language code 'a' for English (American)
+            from kokoro import KPipeline
             self.pipeline = KPipeline(lang_code='a')
             print("✅ Kokoro TTS pipeline initialized successfully")
         except Exception as e:
@@ -828,7 +829,7 @@ class TTSService:
 
         return cleaned_text
 
-    def synthesize(self, text: str, persona_name: str = "Default") -> Tuple[Optional[np.ndarray], str]:
+    def synthesize(self, text: str, persona_name: str = "Default") -> Tuple[Optional[NDArray[np.float32]], str]:
         """Convert text to speech using persona-specific Kokoro voice."""
         if not self.available:
             return None, "❌ TTS not available"
@@ -862,7 +863,7 @@ class TTSService:
             audio_chunks = []
             chunk_count = 0
             try:
-                for i, (gs, ps, audio) in enumerate(audio_generator):
+                for i, (_, _, audio) in enumerate(audio_generator):
                     chunk_count += 1
                     print(f"Got chunk {chunk_count}: audio shape {audio.shape if hasattr(audio, 'shape') else len(audio)}")
 
@@ -955,8 +956,7 @@ class ConversationManager:
         """Add assistant message to history with current persona."""
         self.history.append({
             'role': 'assistant',
-            'content': text,
-            'persona': self.current_persona
+            'content': text
         })
 
     def get_messages_for_llm(self) -> List[MessageDict]:
