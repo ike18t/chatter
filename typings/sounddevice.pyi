@@ -84,3 +84,18 @@ CallbackStatus = Optional[CallbackFlags]
 
 # Callback function type
 AudioCallback = Callable[[CallbackData, int, float, CallbackStatus], None]
+
+# Default settings module
+class DefaultSettings:
+    device: Optional[Union[int, str, Tuple[int, int], Tuple[str, str]]]
+    samplerate: Optional[float]
+    dtype: Optional[Union[str, type]]
+    channels: Optional[Union[int, Tuple[int, int]]]
+    latency: Optional[Union[float, str, Tuple[float, float], Tuple[str, str]]]
+    extra_settings: Optional[Dict[str, Union[str, int, float, bool]]]
+    clip_off: Optional[bool]
+    dither_off: Optional[bool]
+    never_drop_input: Optional[bool]
+    prime_output_buffers_using_stream_callback: Optional[bool]
+
+default: DefaultSettings

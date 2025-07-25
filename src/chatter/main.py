@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple, Union
+from typing import Dict, Generator, List, Optional, Tuple, Union, cast
 
 # Third-party imports
 import gradio as gr
@@ -248,13 +248,16 @@ class AudioRecorder:
 
         # Check audio devices on initialization
         try:
-            devices = sd.query_devices()
+            from sounddevice import DeviceList, DeviceInfo
+            
+            devices = cast(DeviceList, sd.query_devices())
             print("Available audio devices:")
-            for i, device in enumerate(devices):
+            for i, device_info in enumerate(devices):
+                device = cast(DeviceInfo, device_info)
                 if device['max_input_channels'] > 0:
                     print(f"  Input device {i}: {device['name']} - Channels: {device['max_input_channels']}, Sample Rate: {device['default_samplerate']}")
 
-            default_device = sd.query_devices(kind='input')
+            default_device = cast(DeviceInfo, sd.query_devices(kind='input'))
             print(f"\n✅ Using system default input device: {default_device['name']}")
 
             # Test microphone permissions
@@ -268,7 +271,7 @@ class AudioRecorder:
     def _test_microphone_permissions(self) -> None:
         """Test if microphone permissions are properly granted."""
         try:
-            test_audio = []
+            test_audio: List[NDArray[np.float32]] = []
             def permission_test_callback(
             indata: NDArray[np.float32], 
             frames: int, 
@@ -326,7 +329,9 @@ class AudioRecorder:
 
             # Check if we can query devices
             try:
-                default_device = sd.query_devices(kind='input')
+                from sounddevice import DeviceInfo
+                
+                default_device = cast(DeviceInfo, sd.query_devices(kind='input'))
                 print(f"Default input device found: {default_device['name']}")
                 print(f"Device info: {default_device}")
                 default_sr = int(default_device['default_samplerate'])
@@ -350,7 +355,7 @@ class AudioRecorder:
             # Test if we can create a stream briefly
             try:
                 print("Testing audio stream creation...")
-                test_data = []
+                test_data: List[NDArray[np.float32]] = []
                 def test_callback(
                     indata: NDArray[np.float32], 
                     frames: int, 
@@ -402,7 +407,7 @@ class AudioRecorder:
             print(f"Error type: {type(e).__name__}")
             return f"❌ Recording failed: {str(e)}"
 
-    def stop_recording(self) -> Optional[np.ndarray]:
+    def stop_recording(self) -> Optional[NDArray[np.float32]]:
         """Stop recording and return audio data."""
         if not self.recording:
             print("⚠️ Stop called but not recording")
