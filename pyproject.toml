@@ -17,10 +17,13 @@ dependencies = [
     "speechrecognition>=3.14.3",
     "pip>=25.1.1",
     "pyright>=1.1.390",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
 ]
 
 [project.scripts]
 chatter = "chatter.main:main"
+test = "pytest:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -67,6 +70,23 @@ reportUndefinedVariable = "error"
 reportUnboundVariable = "error"
 reportInvalidStubStatement = "error"
 reportUnsupportedDunderAll = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
 reportUnusedCoroutine = "error"
 
 # Disable some overly strict checks for our use case
