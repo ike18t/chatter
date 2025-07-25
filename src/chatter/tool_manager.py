@@ -5,7 +5,11 @@ Handles tool definitions, execution, and integration with LLM services.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
+
+class MessageDict(TypedDict):
+    role: str
+    content: str
 
 
 @dataclass(frozen=True)
@@ -160,9 +164,9 @@ class ToolManager:
     def process_tool_calls(
         self,
         tool_calls: List[Any],
-        messages: List[Dict[str, Any]],
+        messages: List[MessageDict],
         content: str = ""
-    ) -> List[Dict[str, Any]]:
+    ) -> List[MessageDict]:
         """
         Process tool calls and return enhanced messages.
 

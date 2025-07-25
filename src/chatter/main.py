@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple, Union, cast
+from typing import Dict, Generator, List, Optional, Tuple, Union, cast, TypedDict
 
 # Third-party imports
 import gradio as gr
@@ -18,6 +18,15 @@ import whisper
 
 # Local imports
 from .tool_manager import ToolManager
+
+# Type definitions
+class MessageDict(TypedDict):
+    role: str
+    content: str
+
+class HistoryEntry(TypedDict):
+    user: Optional[str]
+    assistant: Optional[str]
 
 def _check_tts_availability() -> bool:
     """Check if TTS dependencies are available."""
@@ -512,7 +521,7 @@ class TranscriptionService:
         print("Loading Whisper model...")
         self.model = whisper.load_model(model_name)
 
-    def transcribe(self, audio_data: np.ndarray, sample_rate: int) -> Tuple[Optional[str], str]:
+    def transcribe(self, audio_data: NDArray[np.float32], sample_rate: int) -> Tuple[Optional[str], str]:
         """Transcribe audio data to text."""
         try:
             print(f"=== Transcription Debug ===")
@@ -546,7 +555,7 @@ class TranscriptionService:
                 print(f"Resampling from {sample_rate} Hz to 16000 Hz...")
                 from scipy import signal
                 num_samples = int(len(audio_data) * 16000 / sample_rate)
-                audio_data = signal.resample(audio_data, num_samples)
+                audio_data = cast(NDArray[np.float32], signal.resample(audio_data, num_samples))
                 sample_rate = 16000
                 print(f"Resampled audio shape: {audio_data.shape}")
 
@@ -585,7 +594,7 @@ class LLMService:
         self.tools = self.tool_manager.get_tool_definitions()
 
 
-    def get_response(self, messages: List[dict]) -> Tuple[Optional[str], str]:
+    def get_response(self, messages: List[MessageDict]) -> Tuple[Optional[str], str]:
         """Get response from LLM (non-streaming)."""
         try:
             print(f"🔍 LLM Request: {len(messages)} messages")
@@ -613,7 +622,7 @@ class LLMService:
                 messages_with_tools = self.tool_manager.process_tool_calls(
                     tool_calls,
                     messages,
-                    response.message.content
+                    response.message.content or ""
                 )
 
 
@@ -624,9 +633,9 @@ class LLMService:
                     stream=False
                 )
 
-                raw_response = final_response.message.content
+                raw_response = final_response.message.content or ""
             else:
-                raw_response = response.message.content
+                raw_response = response.message.content or ""
 
             cleaned_response = self._parse_deepseek_response(raw_response)
             return cleaned_response, "🤖 AI responded, generating speech..."
@@ -634,7 +643,7 @@ class LLMService:
         except Exception as e:
             return None, f"❌ Response Error: {str(e)}"
 
-    def get_streaming_response(self, messages: List[dict]):
+    def get_streaming_response(self, messages: List[MessageDict]):
         """Get streaming response from LLM."""
         try:
             print(f"🔍 STREAMING LLM Request: {len(messages)} messages")
@@ -922,7 +931,7 @@ class ConversationManager:
     """Manages conversation history."""
 
     def __init__(self, persona_manager: PersonaManager):
-        self.history: List[dict] = []
+        self.history: List[MessageDict] = []
         self.persona_manager = persona_manager
         self.current_persona = persona_manager.get_default_persona()
 
@@ -950,7 +959,7 @@ class ConversationManager:
             'persona': self.current_persona
         })
 
-    def get_messages_for_llm(self) -> List[dict]:
+    def get_messages_for_llm(self) -> List[MessageDict]:
         """Get messages formatted for LLM with current persona."""
         system_prompt = self.persona_manager.get_persona_prompt(self.current_persona)
         system_message = {'role': 'system', 'content': system_prompt}
@@ -1350,7 +1359,7 @@ class VoiceChatInterface:
                 time.sleep(3)
                 yield False, gr.update(visible=True), gr.update(visible=False), chatbot.value, transcribed_text, gr.update(value="", visible=False), None
 
-            def process_message(message: str, history):
+            def process_message(message: str, history: List[List[Optional[str]]]):
                 if not message.strip():
                     return history, "", gr.update(value="", visible=False), None
 
