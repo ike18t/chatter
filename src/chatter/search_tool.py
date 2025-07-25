@@ -7,15 +7,35 @@ A tool that uses LLM analysis to extract information from web search results.
 import requests
 from urllib.parse import quote
 import ollama
+from dataclasses import dataclass
 
 
-def web_search(query: str, max_results: int = 3) -> str:
+@dataclass
+class SearchConfig:
+    """Configuration for web search functionality."""
+    # Search behavior
+    temporal_prefix: str = "as of today:"
+    request_timeout: int = 15
+    html_truncation_limit: int = 8000
+    
+    # LLM settings
+    llm_model: str = "llama3.1:8b"
+    
+    # HTTP settings
+    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
+    # Search URLs
+    search_base_url: str = "https://html.duckduckgo.com/html/"
+
+
+def web_search(query: str, max_results: int = 3, config: SearchConfig = None) -> str:
     """
     Search the web for information when you don't know something.
 
     Args:
         query: What to search for (e.g., "React 19 new features", "Python 3.12 changes")
         max_results: Maximum number of results to return (default: 3)
+        config: Search configuration (uses default if not provided)
 
     Returns:
         Formatted search results as a string
@@ -23,13 +43,16 @@ def web_search(query: str, max_results: int = 3) -> str:
     Example:
         result = web_search("What's new in TypeScript 5.3")
     """
+    if config is None:
+        config = SearchConfig()
+        
     try:
         # Add temporal context to help find current information
-        enhanced_query = f"as of today: {query}"
+        enhanced_query = f"{config.temporal_prefix} {query}"
         print(f"🔍 Searching for: {enhanced_query}")
 
         # Get search results using LLM analysis
-        search_result = _search_with_llm_analysis(enhanced_query)
+        search_result = _search_with_llm_analysis(enhanced_query, config)
         
         if search_result:
             return f"Web search results for '{query}':\n\n{search_result}"
@@ -42,47 +65,49 @@ def web_search(query: str, max_results: int = 3) -> str:
         return f"Search failed: {e}"
 
 
-def _search_with_llm_analysis(query: str) -> str:
+def _search_with_llm_analysis(query: str, config: SearchConfig) -> str:
     """
     Perform web search and use LLM to analyze results.
     
     Args:
         query: The search query
+        config: Search configuration
         
     Returns:
         LLM-analyzed search results or empty string if failed
     """
     try:
         # Fetch HTML from DuckDuckGo search
-        html = _fetch_search_html(query)
+        html = _fetch_search_html(query, config)
         if not html:
             return ""
         
         # Use LLM to analyze the HTML and extract information
-        return _analyze_search_html_with_llm(html, query)
+        return _analyze_search_html_with_llm(html, query, config)
         
     except Exception as e:
         print(f"Search with LLM analysis failed: {e}")
         return ""
 
 
-def _fetch_search_html(query: str) -> str:
+def _fetch_search_html(query: str, config: SearchConfig) -> str:
     """
     Fetch HTML from DuckDuckGo search.
     
     Args:
         query: The search query
+        config: Search configuration
         
     Returns:
         HTML content or empty string if failed
     """
     try:
-        url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
+        url = f"{config.search_base_url}?q={quote(query)}"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': config.user_agent
         }
         
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=config.request_timeout)
         response.raise_for_status()
         return response.text
         
@@ -91,20 +116,21 @@ def _fetch_search_html(query: str) -> str:
         return ""
 
 
-def _analyze_search_html_with_llm(html: str, query: str) -> str:
+def _analyze_search_html_with_llm(html: str, query: str, config: SearchConfig) -> str:
     """
     Use LLM to analyze search HTML and return formatted search results.
     
     Args:
         html: The HTML content to analyze
         query: The original search query
+        config: Search configuration
         
     Returns:
         LLM-analyzed search results or empty string if failed
     """
     try:
-        # Truncate HTML to avoid token limits (keep first 8000 chars which should include results)
-        truncated_html = html[:8000] if len(html) > 8000 else html
+        # Truncate HTML to avoid token limits
+        truncated_html = html[:config.html_truncation_limit] if len(html) > config.html_truncation_limit else html
 
         analysis_prompt = f"""You are an expert at analyzing search result HTML and extracting specific, factual information.
 
@@ -130,7 +156,7 @@ HTML to analyze:
 Extract and clearly state the specific facts that answer the query:"""
 
         response = ollama.chat(
-            model="llama3.1:8b",
+            model=config.llm_model,
             messages=[{"role": "user", "content": analysis_prompt}],
             stream=False
         )

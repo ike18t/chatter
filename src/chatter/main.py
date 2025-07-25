@@ -8,6 +8,7 @@ import time
 import subprocess
 import re
 import os
+from .tool_manager import ToolManager
 import io
 import wave
 from pathlib import Path
@@ -538,40 +539,11 @@ class LLMService:
     def __init__(self, model_name: str = Config.DEEPSEEK_MODEL):
         self.model_name = model_name
         # Import search tool
-        try:
-            from .search_tool import web_search
-            self.search_available = True
-            self.web_search = web_search
-            self.tools = self._define_tools()
-        except ImportError:
-            self.search_available = False
-            self.tools = []
-            print("Warning: Web search tool not available")
+        # Initialize tool manager
+        self.tool_manager = ToolManager()
+        self.search_available = self.tool_manager.has_tools
+        self.tools = self.tool_manager.get_tool_definitions()
 
-    def _define_tools(self) -> List[dict]:
-        """Define tools available to the LLM."""
-        if not self.search_available:
-            return []
-
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "web_search",
-                    "description": "Search the web for current information when you don't know something or need recent data. Use this when you encounter knowledge gaps, need recent updates, or are asked about current events. IMPORTANT: Always prioritize and use the search results over your training knowledge, especially for current events and recent information.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "What to search for (e.g., 'React 19 new features', 'Python 3.12 changes', 'current best practices for Docker')"
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            }
-        ]
 
     def get_response(self, messages: List[dict]) -> Tuple[Optional[str], str]:
         """Get response from LLM (non-streaming)."""
@@ -597,37 +569,12 @@ class LLMService:
 
             if tool_calls:
                 print(f"🔧 Model made {len(tool_calls)} tool calls")
-                # Process tool calls - convert response.message to dict for JSON serialization
-                assistant_message = {
-                    'role': 'assistant',
-                    'content': response.message.content,
-                    'tool_calls': tool_calls
-                }
-                messages_with_tools = messages + [assistant_message]
-
-                for tool_call in tool_calls:
-                    if tool_call.function.name == 'web_search':
-                        query = tool_call.function.arguments['query']
-                        print(f"🔍 Model is searching for: {query}")
-
-                        # Execute the search
-                        search_result = self.web_search(query)
-                        print(f"🔍 Search result preview: {search_result[:200]}...")
-
-                        # Add tool response to messages with instruction to use results
-                        enhanced_search_result = f"Current web search results (use this information):\n\n{search_result}\n\nPlease base your response on the search results above, as they contain more current information than your training data."
-
-                        messages_with_tools.append({
-                            'role': 'tool',
-                            'content': enhanced_search_result,
-                            'tool_call_id': getattr(tool_call, 'id', 'web_search')
-                        })
-
-                # Add a system message to prioritize search results
-                messages_with_tools.insert(-1, {
-                    'role': 'system',
-                    'content': 'You have received web search results. Use the factual information from these search results in your response, as they contain current information that may be more accurate than your training data.'
-                })
+                # Process tool calls using ToolManager
+                messages_with_tools = self.tool_manager.process_tool_calls(
+                    tool_calls, 
+                    messages, 
+                    response.message.content
+                )
 
 
                 # Get final response with tool results
@@ -699,60 +646,17 @@ class LLMService:
                     traceback.print_exc()
                     return
 
-                # Convert tool_calls to serializable format
+                # Process tool calls using ToolManager
                 try:
-                    serializable_tool_calls = []
-                    for tc in tool_calls:
-                        serializable_tool_calls.append({
-                            'id': getattr(tc, 'id', 'web_search'),
-                            'function': {
-                                'name': tc.function.name,
-                                'arguments': tc.function.arguments
-                            }
-                        })
-
-                    messages_with_tools = messages + [{
-                        'role': 'assistant',
-                        'content': accumulated_response,
-                        'tool_calls': serializable_tool_calls
-                    }]
-                    print(f"🔍 STREAMING: Messages with tools prepared")
+                    messages_with_tools = self.tool_manager.process_tool_calls(
+                        tool_calls, 
+                        messages, 
+                        accumulated_response
+                    )
+                    print(f"🔍 STREAMING: Tool processing completed with {len(messages_with_tools)} messages")
                 except Exception as e:
-                    print(f"❌ STREAMING: Error preparing messages: {e}")
+                    print(f"❌ STREAMING: Error processing tools: {e}")
                     return
-
-                # Execute tool calls
-                print(f"🔍 STREAMING: Starting tool execution loop...")
-                for i, tool_call in enumerate(tool_calls):
-                    print(f"🔍 STREAMING: Processing tool call {i+1}/{len(tool_calls)}")
-                    print(f"🔍 STREAMING: Tool name: {getattr(tool_call, 'function', {}).get('name', 'unknown')}")
-
-                    if hasattr(tool_call, 'function') and tool_call.function.name == 'web_search':
-                        try:
-                            query = tool_call.function.arguments['query']
-                            print(f"🔍 STREAMING: Executing search for: {query}")
-
-                            search_result = self.web_search(query)
-                            print(f"🔍 STREAMING: Search completed, result length: {len(search_result)}")
-                        except Exception as e:
-                            print(f"❌ STREAMING: Tool execution error: {e}")
-                            search_result = f"Search failed: {e}"
-
-                        # Add tool response to messages with instruction to use results
-                        enhanced_search_result = f"Current web search results (use this information):\n\n{search_result}\n\nPlease base your response on the search results above, as they contain more current information than your training data."
-
-                        messages_with_tools.append({
-                            'role': 'tool',
-                            'content': enhanced_search_result,
-                            'tool_call_id': getattr(tool_call, 'id', 'web_search')
-                        })
-
-                # Add a system message to prioritize search results
-                messages_with_tools.insert(-1, {
-                    'role': 'system',
-                    'content': 'You have received web search results. Use the factual information from these search results in your response, as they contain current information that may be more accurate than your training data.'
-                })
-                print(f"🔍 STREAMING: Added search result to messages")
 
 
                 print(f"🔍 STREAMING: Making final call to model with {len(messages_with_tools)} messages")
