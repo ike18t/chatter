@@ -28,6 +28,12 @@ class HistoryEntry(TypedDict):
     user: Optional[str]
     assistant: Optional[str]
 
+# Gradio interface types
+GradioHistory = List[List[str]]
+AudioTuple = Optional[Tuple[int, NDArray[np.float32]]]
+ProcessingYield = Tuple[str, bool, GradioHistory, AudioTuple]
+GradioUpdate = Dict[str, Union[str, bool]]
+
 def _check_tts_availability() -> bool:
     """Check if TTS dependencies are available."""
     try:
@@ -982,7 +988,7 @@ class ConversationManager:
 
     def get_chat_history(self) -> List[List[str]]:
         """Get formatted chat history for display."""
-        chat_history = []
+        chat_history: List[List[str]] = []
         for message in self.history:
             if message['role'] == 'user':
                 chat_history.append(["👤 You", message['content']])
@@ -1023,7 +1029,7 @@ class VoiceAssistant:
         self.state = RecordingState.RECORDING
         return self.recorder.start_recording()
 
-    def stop_recording_and_process(self) -> Generator[Tuple, None, None]:
+    def stop_recording_and_process(self) -> Generator[ProcessingYield, None, None]:
         """Stop recording and process the audio through the pipeline."""
         if self.state != RecordingState.RECORDING:
             yield "Not currently recording", False, None, None
@@ -1075,7 +1081,7 @@ class VoiceAssistant:
         self.state = RecordingState.IDLE
         yield f"✅ Complete: \"{transcribed_text}\"", False, self.conversation.get_chat_history(), audio_tuple
 
-    def clear_conversation(self) -> Tuple[str, List]:
+    def clear_conversation(self) -> Tuple[str, GradioHistory]:
         """Clear the conversation history."""
         self.conversation.clear()
         return "Conversation cleared", []
@@ -1239,12 +1245,12 @@ class VoiceChatInterface:
 
                 return llm_response, audio_output_data
 
-            def change_persona(persona_name: str):
+            def change_persona(persona_name: str) -> GradioUpdate:
                 """Change the current persona."""
                 self.assistant.conversation.set_persona(persona_name)
                 return gr.update(value=f"✅ Switched to {persona_name} persona", visible=True)
 
-            def clear_chat_sync():
+            def clear_chat_sync() -> Tuple[GradioHistory, str, GradioUpdate]:
                 """Sync conversation history when chatbot is cleared."""
                 self.assistant.conversation.clear()
                 return [], "", gr.update(value="", visible=False)
