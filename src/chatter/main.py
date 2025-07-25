@@ -845,8 +845,8 @@ class TTSService:
 
             # Get voice settings for the persona
             voice_settings = self.persona_manager.get_voice_settings(persona_name)
-            voice_name = voice_settings.get("voice", "af_sarah")
-            speed = voice_settings.get("speed", 1.0)
+            voice_name = str(voice_settings.get("voice", "af_sarah"))
+            speed = float(voice_settings.get("speed", 1.0))
 
             print(f"Synthesizing with voice: {voice_name}, speed: {speed}")
 
@@ -860,25 +860,40 @@ class TTSService:
                 return None, f"❌ TTS Error: Synthesis failed: {synth_error}"
 
             # Collect audio data from generator
-            audio_chunks = []
+            audio_chunks: List[NDArray[np.float32]] = []
             chunk_count = 0
             try:
-                for i, (_, _, audio) in enumerate(audio_generator):
+                # Handle different possible return types from Kokoro generator
+                for audio_item in audio_generator:
                     chunk_count += 1
-                    print(f"Got chunk {chunk_count}: audio shape {audio.shape if hasattr(audio, 'shape') else len(audio)}")
+                    
+                    # Extract audio from various possible formats
+                    if isinstance(audio_item, tuple) and len(audio_item) >= 3:
+                        audio = audio_item[2]  # Third element should be audio
+                    else:
+                        audio = audio_item
+                    
+                    # Type guard and processing for audio data
+                    if audio is not None:
+                        try:
+                            audio_len = len(audio) if hasattr(audio, '__len__') else 0
+                            audio_shape = audio.shape if hasattr(audio, 'shape') else f"len={audio_len}"
+                            print(f"Got chunk {chunk_count}: audio shape {audio_shape}")
+                            
+                            if audio_len > 0:
+                                # Convert PyTorch tensor to numpy array
+                                if hasattr(audio, 'detach'):  # It's a PyTorch tensor
+                                    audio = audio.detach().cpu().numpy()
+                                    print(f"Converted tensor to numpy: {audio.shape}")
 
-                    # Kokoro returns PyTorch tensors, convert to numpy
-                    if audio is not None and len(audio) > 0:
-                        # Convert PyTorch tensor to numpy array
-                        if hasattr(audio, 'detach'):  # It's a PyTorch tensor
-                            audio = audio.detach().cpu().numpy()
-                            print(f"Converted tensor to numpy: {audio.shape}")
-
-                        # Ensure audio is float32
-                        if audio.dtype != np.float32:
-                            audio = audio.astype(np.float32)
-                        audio_chunks.append(audio)
-                        print(f"Added chunk {chunk_count} to list (shape: {audio.shape})")
+                                # Ensure audio is numpy array and float32
+                                if hasattr(audio, 'dtype') and hasattr(audio, 'astype'):
+                                    if audio.dtype != np.float32:
+                                        audio = audio.astype(np.float32)
+                                    audio_chunks.append(cast(NDArray[np.float32], audio))
+                                    print(f"Added chunk {chunk_count} to list")
+                        except Exception as chunk_error:
+                            print(f"Error processing chunk {chunk_count}: {chunk_error}")
                     else:
                         print(f"Chunk {chunk_count} has no valid audio data")
 
@@ -892,7 +907,7 @@ class TTSService:
 
             # Concatenate all chunks into single array
             try:
-                audio_data = np.concatenate(audio_chunks)
+                audio_data: NDArray[np.float32] = np.concatenate(audio_chunks)
                 print(f"Concatenated {len(audio_chunks)} chunks into audio array")
             except ValueError as concat_error:
                 print(f"Concatenation error: {concat_error}")
@@ -962,7 +977,7 @@ class ConversationManager:
     def get_messages_for_llm(self) -> List[MessageDict]:
         """Get messages formatted for LLM with current persona."""
         system_prompt = self.persona_manager.get_persona_prompt(self.current_persona)
-        system_message = {'role': 'system', 'content': system_prompt}
+        system_message: MessageDict = {'role': 'system', 'content': system_prompt}
         return [system_message] + self.history
 
     def get_chat_history(self) -> List[List[str]]:
@@ -974,12 +989,11 @@ class ConversationManager:
             else:
                 # Use original content for display (no cleaning needed)
                 cleaned_content = message['content']
-                # Get the persona that was used for this message
-                persona_name = message.get('persona', self.current_persona)
-                if persona_name == "Default":
+                # Use current persona for display
+                if self.current_persona == "Default":
                     prefix = "🤖 Assistant"
                 else:
-                    prefix = f"🤖 {persona_name}"
+                    prefix = f"🤖 {self.current_persona}"
                 chat_history.append([prefix, cleaned_content])
         return chat_history
 
