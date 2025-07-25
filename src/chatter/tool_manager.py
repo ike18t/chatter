@@ -7,11 +7,18 @@ Handles tool definitions, execution, and integration with LLM services.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TypedDict
 from typing_extensions import NotRequired
+import ollama
+
+class SerializedToolCall(TypedDict):
+    id: str
+    type: str
+    function: Dict[str, str]
 
 class MessageDict(TypedDict):
     role: str
     content: str
     tool_call_id: NotRequired[Optional[str]]  # For tool response messages
+    tool_calls: NotRequired[List[SerializedToolCall]]  # For assistant messages with tool calls
 
 
 @dataclass(frozen=True)
@@ -144,7 +151,7 @@ class ToolManager:
                 f"Tool '{tool_name}' execution failed: {e}"
             ) from e
 
-    def serialize_tool_calls(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
+    def serialize_tool_calls(self, tool_calls: List[ollama.ToolCall]) -> List[SerializedToolCall]:
         """
         Convert tool calls to serializable format.
 
@@ -157,9 +164,10 @@ class ToolManager:
         return [
             {
                 'id': getattr(tc, 'id', self.config.default_tool_id),
+                'type': 'function',
                 'function': {
                     'name': tc.function.name,
-                    'arguments': tc.function.arguments
+                    'arguments': str(tc.function.arguments) if not isinstance(tc.function.arguments, str) else tc.function.arguments
                 }
             }
             for tc in tool_calls
@@ -167,7 +175,7 @@ class ToolManager:
 
     def process_tool_calls(
         self,
-        tool_calls: List[Any],
+        tool_calls: List[ollama.ToolCall],
         messages: List[MessageDict],
         content: str = ""
     ) -> List[MessageDict]:
@@ -193,11 +201,12 @@ class ToolManager:
         serialized_calls = self.serialize_tool_calls(tool_calls)
 
         # Add assistant message with tool calls
-        messages_with_tools = messages + [{
+        assistant_message: MessageDict = {
             'role': 'assistant',
             'content': content,
             'tool_calls': serialized_calls
-        }]
+        }
+        messages_with_tools: List[MessageDict] = messages + [assistant_message]
 
         # Execute each tool call
         for tool_call in tool_calls:
@@ -215,24 +224,26 @@ class ToolManager:
                     )
 
                     # Add tool response message
-                    messages_with_tools.append({
+                    tool_response: MessageDict = {
                         'role': 'tool',
                         'content': enhanced_result,
                         'tool_call_id': getattr(
                             tool_call, 'id', self.config.default_tool_id
                         )
-                    })
+                    }
+                    messages_with_tools.append(tool_response)
 
                 except ToolExecutionError as e:
                     print(f"❌ Tool execution failed: {e}")
                     # Add error message as tool response
-                    messages_with_tools.append({
+                    error_response: MessageDict = {
                         'role': 'tool',
                         'content': f"Search failed: {e}",
                         'tool_call_id': getattr(
                             tool_call, 'id', self.config.default_tool_id
                         )
-                    })
+                    }
+                    messages_with_tools.append(error_response)
 
         # Add priority message to encourage using search results
         priority_message: MessageDict = {

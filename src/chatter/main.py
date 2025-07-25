@@ -21,10 +21,16 @@ import whisper
 from .tool_manager import ToolManager
 
 # Type definitions
+class SerializedToolCall(TypedDict):
+    id: str
+    type: str
+    function: Dict[str, str]
+
 class MessageDict(TypedDict):
     role: str
     content: str
     tool_call_id: NotRequired[Optional[str]]  # For tool response messages
+    tool_calls: NotRequired[List[SerializedToolCall]]  # For assistant messages with tool calls
 
 class HistoryEntry(TypedDict):
     user: Optional[str]
@@ -271,9 +277,8 @@ class AudioRecorder:
             devices = cast(DeviceList, sd.query_devices())
             print("Available audio devices:")
             for i, device_info in enumerate(devices):
-                device = cast(DeviceInfo, device_info)
-                if device['max_input_channels'] > 0:
-                    print(f"  Input device {i}: {device['name']} - Channels: {device['max_input_channels']}, Sample Rate: {device['default_samplerate']}")
+                if device_info['max_input_channels'] > 0:
+                    print(f"  Input device {i}: {device_info['name']} - Channels: {device_info['max_input_channels']}, Sample Rate: {device_info['default_samplerate']}")
 
             default_device = cast(DeviceInfo, sd.query_devices(kind='input'))
             print(f"\n✅ Using system default input device: {default_device['name']}")
@@ -646,7 +651,7 @@ class LLMService:
             else:
                 raw_response = response.message.content or ""
 
-            cleaned_response = self._parse_deepseek_response(raw_response)
+            cleaned_response = self.parse_deepseek_response(raw_response)
             return cleaned_response, "🤖 AI responded, generating speech..."
 
         except Exception as e:
@@ -669,7 +674,7 @@ class LLMService:
             )
 
             accumulated_response = ""
-            tool_calls = []
+            tool_calls: List[ollama.ToolCall] = []
 
             # Process the streaming response
             for chunk in response_stream:
@@ -738,7 +743,7 @@ class LLMService:
         except Exception as e:
             yield None, f"❌ Response Error: {str(e)}"
 
-    def _parse_deepseek_response(self, raw_response: str) -> str:
+    def parse_deepseek_response(self, raw_response: str) -> str:
         """Parse DeepSeek-R1 response to extract only the final answer."""
         # Remove thinking tags and content
         patterns = [
@@ -818,12 +823,12 @@ class TTSService:
 
         # Remove emojis
         emoji_pattern = re.compile(
-            "["
-            "\U0001F600-\U0001F64F"  # emoticons
-            "\U0001F300-\U0001F5FF"  # symbols & pictographs
-            "\U0001F680-\U0001F6FF"  # transport & map symbols
-            "\U0001F1E0-\U0001F1FF"  # flags
-            "\U0001F900-\U0001F9FF"  # supplemental symbols
+            "[" +
+            "\U0001F600-\U0001F64F" +  # emoticons
+            "\U0001F300-\U0001F5FF" +  # symbols & pictographs
+            "\U0001F680-\U0001F6FF" +  # transport & map symbols
+            "\U0001F1E0-\U0001F1FF" +  # flags
+            "\U0001F900-\U0001F9FF" +  # supplemental symbols
             "]+", flags=re.UNICODE)
 
         cleaned_text = emoji_pattern.sub('', cleaned_text)
@@ -890,10 +895,12 @@ class TTSService:
                                     print(f"Converted tensor to numpy: {audio.shape}")
 
                                 # Ensure audio is numpy array and float32
-                                if hasattr(audio, 'dtype') and hasattr(audio, 'astype'):
+                                if isinstance(audio, np.ndarray):
                                     if audio.dtype != np.float32:
-                                        audio = audio.astype(np.float32)
-                                    audio_chunks.append(cast(NDArray[np.float32], audio))
+                                        audio = cast(NDArray[np.float32], audio.astype(np.float32))
+                                    else:
+                                        audio = cast(NDArray[np.float32], audio)
+                                    audio_chunks.append(audio)
                                     print(f"Added chunk {chunk_count} to list")
                         except Exception as chunk_error:
                             print(f"Error processing chunk {chunk_count}: {chunk_error}")
@@ -1269,12 +1276,12 @@ class VoiceChatInterface:
 
                         # Update the response in real-time
                         accumulated_response = full_response
-                        cleaned_response = self.assistant.llm._parse_deepseek_response(accumulated_response)
+                        cleaned_response = self.assistant.llm.parse_deepseek_response(accumulated_response)
                         current_history[-1][1] = cleaned_response
                         yield current_history, "", gr.update(value=create_loading_html(f"{self.assistant.conversation.get_current_persona()} is responding..."), visible=True), None
 
                     # Clean the final response
-                    final_response = self.assistant.llm._parse_deepseek_response(accumulated_response)
+                    final_response = self.assistant.llm.parse_deepseek_response(accumulated_response)
                     current_history[-1][1] = final_response
 
                     # Add assistant message to conversation (this will show in chat)
@@ -1379,11 +1386,11 @@ class VoiceChatInterface:
 
                         # Update the response in real-time
                         accumulated_response = full_response
-                        history[-1][1] = self.assistant.llm._parse_deepseek_response(accumulated_response)
+                        history[-1][1] = self.assistant.llm.parse_deepseek_response(accumulated_response)
                         yield history, "", gr.update(value=create_loading_html("AI is responding..."), visible=True), None
 
                     # Clean the final response
-                    final_response = self.assistant.llm._parse_deepseek_response(accumulated_response)
+                    final_response = self.assistant.llm.parse_deepseek_response(accumulated_response)
                     history[-1][1] = final_response
 
                     # Add assistant message to conversation

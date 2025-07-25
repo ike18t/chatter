@@ -223,7 +223,7 @@ def _analyze_search_html_with_llm(
         )
 
         analysis_result = response.message.content
-        if analysis_result is None:
+        if not analysis_result:
             print("LLM analysis returned no content")
             return ""
         
