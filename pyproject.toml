@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.2.6",
     "ollama>=0.5.1",
     "openai-whisper>=20250625",
+    "requests>=2.31.0",
     "scipy>=1.16.0",
     "sounddevice>=0.5.2",
     "soundfile>=0.12.0",
