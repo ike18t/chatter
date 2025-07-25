@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Generator, List, Optional, Tuple, Union, cast, TypedDict
+from typing_extensions import NotRequired
 
 # Third-party imports
 import gradio as gr
@@ -23,6 +24,7 @@ from .tool_manager import ToolManager
 class MessageDict(TypedDict):
     role: str
     content: str
+    tool_call_id: NotRequired[Optional[str]]  # For tool response messages
 
 class HistoryEntry(TypedDict):
     user: Optional[str]
@@ -869,15 +871,9 @@ class TTSService:
             audio_chunks: List[NDArray[np.float32]] = []
             chunk_count = 0
             try:
-                # Handle different possible return types from Kokoro generator
-                for audio_item in audio_generator:
+                # Process Kokoro generator chunks with proper typing
+                for _, _, audio in audio_generator:
                     chunk_count += 1
-                    
-                    # Extract audio from various possible formats
-                    if isinstance(audio_item, tuple) and len(audio_item) >= 3:
-                        audio = audio_item[2]  # Third element should be audio
-                    else:
-                        audio = audio_item
                     
                     # Type guard and processing for audio data
                     if audio is not None:
@@ -887,9 +883,9 @@ class TTSService:
                             print(f"Got chunk {chunk_count}: audio shape {audio_shape}")
                             
                             if audio_len > 0:
-                                # Convert PyTorch tensor to numpy array
-                                if hasattr(audio, 'detach'):  # It's a PyTorch tensor
-                                    audio = audio.detach().cpu().numpy()
+                                # Convert PyTorch tensor to numpy array  
+                                if hasattr(audio, 'detach') and not isinstance(audio, np.ndarray):  # It's a PyTorch tensor
+                                    audio = cast(NDArray[np.float32], audio.detach().cpu().numpy())
                                     print(f"Converted tensor to numpy: {audio.shape}")
 
                                 # Ensure audio is numpy array and float32
@@ -1032,7 +1028,7 @@ class VoiceAssistant:
     def stop_recording_and_process(self) -> Generator[ProcessingYield, None, None]:
         """Stop recording and process the audio through the pipeline."""
         if self.state != RecordingState.RECORDING:
-            yield "Not currently recording", False, None, None
+            yield "Not currently recording", False, [], None
             return
 
         self.state = RecordingState.PROCESSING
@@ -1222,28 +1218,6 @@ class VoiceChatInterface:
             def create_loading_html(message: str) -> str:
                 """Create HTML with loading spinner."""
                 return f'<div class="processing-status"><div class="loading-spinner"></div>{message}</div>'
-
-            def process_llm_and_tts(user_message: str):
-                """Helper function to process LLM response and generate TTS."""
-                # Add user message to conversation
-                self.assistant.conversation.add_user_message(user_message)
-
-                # Get LLM response
-                llm_response, _ = self.assistant.llm.get_response(
-                    self.assistant.conversation.get_messages_for_llm()
-                )
-
-                if llm_response is None:
-                    return None, None
-
-                # Add assistant message to conversation
-                self.assistant.conversation.add_assistant_message(llm_response)
-
-                # Generate TTS audio
-                audio_data, _ = self.assistant.tts.synthesize(llm_response, self.assistant.conversation.get_current_persona())
-                audio_output_data = (Config.TTS_SAMPLE_RATE, audio_data) if audio_data is not None else None
-
-                return llm_response, audio_output_data
 
             def change_persona(persona_name: str) -> GradioUpdate:
                 """Change the current persona."""

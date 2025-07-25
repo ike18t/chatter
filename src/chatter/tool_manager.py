@@ -6,10 +6,12 @@ Handles tool definitions, execution, and integration with LLM services.
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TypedDict
+from typing_extensions import NotRequired
 
 class MessageDict(TypedDict):
     role: str
     content: str
+    tool_call_id: NotRequired[Optional[str]]  # For tool response messages
 
 
 @dataclass(frozen=True)
@@ -231,10 +233,11 @@ class ToolManager:
                     })
 
         # Add priority message to encourage using search results
-        messages_with_tools.insert(-1, {
+        priority_message: MessageDict = {
             'role': 'system',
             'content': self.config.priority_message
-        })
+        }
+        messages_with_tools.insert(-1, priority_message)
 
         return messages_with_tools
 
