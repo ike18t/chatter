@@ -35,11 +35,27 @@ class MessageDict(TypedDict):
     tool_calls: NotRequired[
         list[SerializedToolCall]
     ]  # For assistant messages with tool calls
+    persona: NotRequired[str | None]  # For assistant messages - track which persona generated them
 
 
 class HistoryEntry(TypedDict):
     user: str | None
     assistant: str | None
+
+
+class DeviceInfo(TypedDict):
+    """Represents audio device information from sounddevice."""
+
+    name: str
+    index: int
+    hostapi: int
+    max_input_channels: int
+    max_output_channels: int
+    default_low_input_latency: float
+    default_low_output_latency: float
+    default_high_input_latency: float
+    default_high_output_latency: float
+    default_samplerate: float
 
 
 # Gradio interface types
@@ -241,7 +257,7 @@ class AudioRecorder:
         # Check audio devices on initialization
         try:
             import sounddevice as sd
-            from sounddevice import DeviceInfo, DeviceList
+            from sounddevice import DeviceList
 
             devices = cast(DeviceList, sd.query_devices())
             print("Available audio devices:")
@@ -329,7 +345,7 @@ class AudioRecorder:
 
             # Check if we can query devices
             try:
-                from sounddevice import DeviceInfo
+                # Device info is a dict, not a separate DeviceInfo class
 
                 default_device = cast(DeviceInfo, sd.query_devices(kind="input"))
                 print(f"Default input device found: {default_device['name']}")
@@ -1022,7 +1038,12 @@ class ConversationManager:
 
     def add_assistant_message(self, text: str) -> None:
         """Add assistant message to history with current persona."""
-        self.history.append({"role": "assistant", "content": text})
+        self.history.append({
+            "role": "assistant",
+            "content": text,
+            "persona": self.current_persona
+        })
+
 
     def get_messages_for_llm(self) -> list[MessageDict]:
         """Get messages formatted for LLM with current persona."""
@@ -1039,11 +1060,12 @@ class ConversationManager:
             else:
                 # Use original content for display (no cleaning needed)
                 cleaned_content = message["content"]
-                # Use current persona for display
-                if self.current_persona == "Default":
+                # Use the persona that generated this message, fallback to current persona
+                message_persona = message.get("persona", self.current_persona)
+                if message_persona == "Default":
                     prefix = "🤖 Assistant"
                 else:
-                    prefix = f"🤖 {self.current_persona}"
+                    prefix = f"🤖 {message_persona}"
                 chat_history.append([prefix, cleaned_content])
         return chat_history
 
