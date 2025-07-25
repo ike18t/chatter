@@ -28,7 +28,7 @@ except ImportError:
 @dataclass
 class Config:
     """Application configuration."""
-    DEEPSEEK_MODEL = "deepseek-r1:7b"
+    DEEPSEEK_MODEL = "llama3.1:8b"  # Known tool-capable model for testing
     WHISPER_MODEL = "tiny"
     SAMPLE_RATE = 16000
     TTS_SAMPLE_RATE = 24000
@@ -36,6 +36,8 @@ class Config:
     SERVER_PORT = 7860
     SYSTEM_PROMPT = """
         You are a friendly (but humorous) chat bot. Your output will be spoken so try to make it sound like natural language.
+
+        When you search the web, trust and use the search results since they contain current information that may be more accurate than your training data.
     """
 
 
@@ -96,7 +98,15 @@ class PersonaManager:
 
     def get_persona_prompt(self, persona_name: str) -> str:
         """Get the system prompt for a specific persona."""
-        return self.personas.get(persona_name, Config.SYSTEM_PROMPT)
+        base_prompt = self.personas.get(persona_name, Config.SYSTEM_PROMPT)
+        
+        # Add web search instruction to all personas (unless it's already there)
+        web_search_instruction = "\n\nWhen you search the web, trust and use the search results since they contain current information that may be more accurate than your training data."
+        
+        if web_search_instruction.strip() not in base_prompt:
+            return base_prompt + web_search_instruction
+        else:
+            return base_prompt
 
     def get_default_persona(self) -> str:
         """Get the default persona name."""
@@ -111,7 +121,7 @@ class PersonaManager:
                 "speed": 1.0
             },
             "Product Manager Prompt": {
-                "voice": "am_michael", 
+                "voice": "am_michael",
                 "speed": 0.9
             },
             "Software Architect": {
@@ -527,19 +537,111 @@ class LLMService:
 
     def __init__(self, model_name: str = Config.DEEPSEEK_MODEL):
         self.model_name = model_name
+        # Import search tool
+        try:
+            from .search_tool import web_search
+            self.search_available = True
+            self.web_search = web_search
+            self.tools = self._define_tools()
+        except ImportError:
+            self.search_available = False
+            self.tools = []
+            print("Warning: Web search tool not available")
+
+    def _define_tools(self) -> List[dict]:
+        """Define tools available to the LLM."""
+        if not self.search_available:
+            return []
+
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web for current information when you don't know something or need recent data. Use this when you encounter knowledge gaps, need recent updates, or are asked about current events. IMPORTANT: Always prioritize and use the search results over your training knowledge, especially for current events and recent information.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "What to search for (e.g., 'React 19 new features', 'Python 3.12 changes', 'current best practices for Docker')"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            }
+        ]
 
     def get_response(self, messages: List[dict]) -> Tuple[Optional[str], str]:
         """Get response from LLM (non-streaming)."""
         try:
+            print(f"🔍 LLM Request: {len(messages)} messages")
+            print(f"🔍 Tools available: {len(self.tools) if self.tools else 0}")
+            print(f"🔍 Model: {self.model_name}")
+            print(f"🔍 Last message: {messages[-1]['content'][:100]}...")
+
+            # First call with tools available
             response = ollama.chat(
                 model=self.model_name,
                 messages=messages,
+                tools=self.tools if self.tools else None,
                 stream=False
             )
 
-            raw_response = response['message']['content']
-            cleaned_response = self._parse_deepseek_response(raw_response)
+            # Check if the model wants to use tools
+            tool_calls = getattr(response.message, 'tool_calls', None)
 
+            print(f"🔍 Model response received. Tool calls: {tool_calls is not None}")
+            print(f"🔍 Response content: {response.message.content[:100] if response.message.content else 'None'}...")
+
+            if tool_calls:
+                print(f"🔧 Model made {len(tool_calls)} tool calls")
+                # Process tool calls - convert response.message to dict for JSON serialization
+                assistant_message = {
+                    'role': 'assistant',
+                    'content': response.message.content,
+                    'tool_calls': tool_calls
+                }
+                messages_with_tools = messages + [assistant_message]
+
+                for tool_call in tool_calls:
+                    if tool_call.function.name == 'web_search':
+                        query = tool_call.function.arguments['query']
+                        print(f"🔍 Model is searching for: {query}")
+
+                        # Execute the search
+                        search_result = self.web_search(query)
+                        print(f"🔍 Search result preview: {search_result[:200]}...")
+
+                        # Add tool response to messages with instruction to use results
+                        enhanced_search_result = f"Current web search results (use this information):\n\n{search_result}\n\nPlease base your response on the search results above, as they contain more current information than your training data."
+
+                        messages_with_tools.append({
+                            'role': 'tool',
+                            'content': enhanced_search_result,
+                            'tool_call_id': getattr(tool_call, 'id', 'web_search')
+                        })
+
+                # Add a system message to prioritize search results
+                messages_with_tools.insert(-1, {
+                    'role': 'system',
+                    'content': 'You have received web search results. Use the factual information from these search results in your response, as they contain current information that may be more accurate than your training data.'
+                })
+
+
+                # Get final response with tool results
+                final_response = ollama.chat(
+                    model=self.model_name,
+                    messages=messages_with_tools,
+                    stream=False
+                )
+
+                raw_response = final_response.message.content
+            else:
+                raw_response = response.message.content
+
+            cleaned_response = self._parse_deepseek_response(raw_response)
             return cleaned_response, "🤖 AI responded, generating speech..."
 
         except Exception as e:
@@ -548,19 +650,128 @@ class LLMService:
     def get_streaming_response(self, messages: List[dict]):
         """Get streaming response from LLM."""
         try:
+            print(f"🔍 STREAMING LLM Request: {len(messages)} messages")
+            print(f"🔍 STREAMING Tools available: {len(self.tools) if self.tools else 0}")
+            print(f"🔍 STREAMING Model: {self.model_name}")
+            print(f"🔍 STREAMING Last message: {messages[-1]['content'][:100]}...")
+
+            # First call with tools available
             response_stream = ollama.chat(
                 model=self.model_name,
                 messages=messages,
+                tools=self.tools if self.tools else None,
                 stream=True
             )
 
             accumulated_response = ""
+            tool_calls = []
+
+            # Process the streaming response
             for chunk in response_stream:
-                if 'message' in chunk and 'content' in chunk['message']:
-                    content = chunk['message']['content']
-                    accumulated_response += content
-                    # Yield the new content and accumulated response
-                    yield content, accumulated_response
+                if 'message' in chunk:
+                    message = chunk['message']
+
+                    # Handle content
+                    if 'content' in message and message['content']:
+                        content = message['content']
+                        accumulated_response += content
+                        yield content, accumulated_response
+
+                    # Collect tool calls
+                    if 'tool_calls' in message and message['tool_calls']:
+                        print(f"🔧 STREAMING: Found tool calls in chunk: {len(message['tool_calls'])}")
+                        tool_calls.extend(message['tool_calls'])
+
+            # If there were tool calls, process them
+            print(f"🔍 STREAMING: Total tool calls collected: {len(tool_calls)}")
+            if tool_calls:
+                try:
+                    print(f"🔍 STREAMING: Processing tool calls...")
+                    print(f"🔍 STREAMING: Tool calls structure: {type(tool_calls[0])}")
+                    print(f"🔍 STREAMING: Tool call content: {tool_calls[0]}")
+
+                    print(f"🔍 STREAMING: About to yield search status...")
+                    yield "🔍 Searching...", "🔍 Searching for additional information..."
+                    print(f"🔍 STREAMING: Yield completed successfully")
+                except Exception as e:
+                    print(f"❌ STREAMING: Error in tool processing: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return
+
+                # Convert tool_calls to serializable format
+                try:
+                    serializable_tool_calls = []
+                    for tc in tool_calls:
+                        serializable_tool_calls.append({
+                            'id': getattr(tc, 'id', 'web_search'),
+                            'function': {
+                                'name': tc.function.name,
+                                'arguments': tc.function.arguments
+                            }
+                        })
+
+                    messages_with_tools = messages + [{
+                        'role': 'assistant',
+                        'content': accumulated_response,
+                        'tool_calls': serializable_tool_calls
+                    }]
+                    print(f"🔍 STREAMING: Messages with tools prepared")
+                except Exception as e:
+                    print(f"❌ STREAMING: Error preparing messages: {e}")
+                    return
+
+                # Execute tool calls
+                print(f"🔍 STREAMING: Starting tool execution loop...")
+                for i, tool_call in enumerate(tool_calls):
+                    print(f"🔍 STREAMING: Processing tool call {i+1}/{len(tool_calls)}")
+                    print(f"🔍 STREAMING: Tool name: {getattr(tool_call, 'function', {}).get('name', 'unknown')}")
+
+                    if hasattr(tool_call, 'function') and tool_call.function.name == 'web_search':
+                        try:
+                            query = tool_call.function.arguments['query']
+                            print(f"🔍 STREAMING: Executing search for: {query}")
+
+                            search_result = self.web_search(query)
+                            print(f"🔍 STREAMING: Search completed, result length: {len(search_result)}")
+                        except Exception as e:
+                            print(f"❌ STREAMING: Tool execution error: {e}")
+                            search_result = f"Search failed: {e}"
+
+                        # Add tool response to messages with instruction to use results
+                        enhanced_search_result = f"Current web search results (use this information):\n\n{search_result}\n\nPlease base your response on the search results above, as they contain more current information than your training data."
+
+                        messages_with_tools.append({
+                            'role': 'tool',
+                            'content': enhanced_search_result,
+                            'tool_call_id': getattr(tool_call, 'id', 'web_search')
+                        })
+
+                # Add a system message to prioritize search results
+                messages_with_tools.insert(-1, {
+                    'role': 'system',
+                    'content': 'You have received web search results. Use the factual information from these search results in your response, as they contain current information that may be more accurate than your training data.'
+                })
+                print(f"🔍 STREAMING: Added search result to messages")
+
+
+                print(f"🔍 STREAMING: Making final call to model with {len(messages_with_tools)} messages")
+                print(f"🔍 STREAMING: Final message preview: {messages_with_tools[-1]['content'][:200]}...")
+
+                # Get final streaming response with tool results
+                final_stream = ollama.chat(
+                    model=self.model_name,
+                    messages=messages_with_tools,
+                    stream=True
+                )
+                print(f"🔍 STREAMING: Final stream started")
+
+                final_accumulated = ""
+                for chunk in final_stream:
+                    if 'message' in chunk and 'content' in chunk['message']:
+                        content = chunk['message']['content']
+                        final_accumulated += content
+                        yield content, final_accumulated
 
         except Exception as e:
             yield None, f"❌ Response Error: {str(e)}"
@@ -610,58 +821,58 @@ class TTSService:
     def _clean_text_for_tts(self, text: str) -> str:
         """Clean text for TTS by removing markdown blocks and emojis."""
         import re
-        
+
         print(f"Input text: '{text}'")
-        
+
         # Remove specific markdown blocks that shouldn't be spoken
         cleaned_text = text
-        
+
         # Remove code blocks entirely (```...```)
         cleaned_text = re.sub(r'```[\s\S]*?```', '', cleaned_text, flags=re.MULTILINE)
         print(f"After code block removal: '{cleaned_text}'")
-        
+
         # Remove inline code (`code`)
         cleaned_text = re.sub(r'`[^`]+`', '', cleaned_text)
         print(f"After inline code removal: '{cleaned_text}'")
-        
+
         # Remove headers but keep the text (# Header -> Header)
         cleaned_text = re.sub(r'^#{1,6}\s*(.+)$', r'\1', cleaned_text, flags=re.MULTILINE)
         print(f"After header cleanup: '{cleaned_text}'")
-        
+
         # Remove list markers but keep text (- item -> item, 1. item -> item)
         cleaned_text = re.sub(r'^\s*[-*+]\s+', '', cleaned_text, flags=re.MULTILINE)
         cleaned_text = re.sub(r'^\s*\d+\.\s+', '', cleaned_text, flags=re.MULTILINE)
         print(f"After list marker removal: '{cleaned_text}'")
-        
+
         # Remove links but keep the text ([text](url) -> text)
         cleaned_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', cleaned_text)
         print(f"After link cleanup: '{cleaned_text}'")
-        
+
         # Remove bold/italic markdown but keep text (**bold** -> bold, *italic* -> italic)
         cleaned_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned_text)
         cleaned_text = re.sub(r'\*([^*]+)\*', r'\1', cleaned_text)
         print(f"After bold/italic cleanup: '{cleaned_text}'")
-        
+
         # Remove emojis
         emoji_pattern = re.compile(
             "["
             "\U0001F600-\U0001F64F"  # emoticons
-            "\U0001F300-\U0001F5FF"  # symbols & pictographs  
+            "\U0001F300-\U0001F5FF"  # symbols & pictographs
             "\U0001F680-\U0001F6FF"  # transport & map symbols
             "\U0001F1E0-\U0001F1FF"  # flags
             "\U0001F900-\U0001F9FF"  # supplemental symbols
             "]+", flags=re.UNICODE)
-        
+
         cleaned_text = emoji_pattern.sub('', cleaned_text)
         print(f"After emoji removal: '{cleaned_text}'")
-        
+
         # Clean up extra whitespace and empty lines
         cleaned_text = re.sub(r'\n\s*\n', '\n', cleaned_text)  # Remove empty lines
         cleaned_text = re.sub(r'\s+', ' ', cleaned_text)       # Collapse whitespace
         cleaned_text = cleaned_text.strip()
-        
+
         print(f"Final cleaned text: '{cleaned_text}'")
-        
+
         return cleaned_text
 
     def synthesize(self, text: str, persona_name: str = "Default") -> Tuple[Optional[np.ndarray], str]:
@@ -677,7 +888,7 @@ class TTSService:
 
             if not cleaned_text.strip():
                 return None, "❌ TTS Error: No speakable text after cleaning"
-                
+
             # Get voice settings for the persona
             voice_settings = self.persona_manager.get_voice_settings(persona_name)
             voice_name = voice_settings.get("voice", "af_sarah")
@@ -701,14 +912,14 @@ class TTSService:
                 for i, (gs, ps, audio) in enumerate(audio_generator):
                     chunk_count += 1
                     print(f"Got chunk {chunk_count}: audio shape {audio.shape if hasattr(audio, 'shape') else len(audio)}")
-                    
+
                     # Kokoro returns PyTorch tensors, convert to numpy
                     if audio is not None and len(audio) > 0:
                         # Convert PyTorch tensor to numpy array
                         if hasattr(audio, 'detach'):  # It's a PyTorch tensor
                             audio = audio.detach().cpu().numpy()
                             print(f"Converted tensor to numpy: {audio.shape}")
-                        
+
                         # Ensure audio is float32
                         if audio.dtype != np.float32:
                             audio = audio.astype(np.float32)
@@ -1099,15 +1310,15 @@ class VoiceChatInterface:
                 try:
                     accumulated_response = ""
                     current_history = self.assistant.conversation.get_chat_history()
-                    
+
                     # Add empty assistant message to show streaming
                     current_history.append([f"🤖 {self.assistant.conversation.get_current_persona()}", ""])
-                    
+
                     for chunk_content, full_response in self.assistant.llm.get_streaming_response(messages_for_llm):
                         if chunk_content is None:  # Error case
                             yield current_history, "", gr.update(value=f"❌ {full_response}", visible=True), None
                             return
-                        
+
                         # Update the response in real-time
                         accumulated_response = full_response
                         cleaned_response = self.assistant.llm._parse_deepseek_response(accumulated_response)
@@ -1117,7 +1328,7 @@ class VoiceChatInterface:
                     # Clean the final response
                     final_response = self.assistant.llm._parse_deepseek_response(accumulated_response)
                     current_history[-1][1] = final_response
-                    
+
                     # Add assistant message to conversation (this will show in chat)
                     self.assistant.conversation.add_assistant_message(final_response)
 
@@ -1217,7 +1428,7 @@ class VoiceChatInterface:
                         if chunk_content is None:  # Error case
                             yield history, "", gr.update(value=f"❌ {full_response}", visible=True), None
                             return
-                        
+
                         # Update the response in real-time
                         accumulated_response = full_response
                         history[-1][1] = self.assistant.llm._parse_deepseek_response(accumulated_response)
@@ -1226,7 +1437,7 @@ class VoiceChatInterface:
                     # Clean the final response
                     final_response = self.assistant.llm._parse_deepseek_response(accumulated_response)
                     history[-1][1] = final_response
-                    
+
                     # Add assistant message to conversation
                     self.assistant.conversation.add_assistant_message(final_response)
 
