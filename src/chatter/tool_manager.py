@@ -24,8 +24,10 @@ class ToolConfig:
         "Search the web for current information when you don't know something "
         "or need recent data. Use this when you encounter knowledge gaps, "
         "need recent updates, or are asked about current events. "
-        "IMPORTANT: Always prioritize and use the search results over your "
-        "training knowledge, especially for current events and recent information."
+        "CRITICAL: ALWAYS use web search for ANY question about current events, "
+        "politics, recent news, current office holders, or anything that could "
+        "have changed since your training. Do NOT rely on training data for "
+        "current information - ALWAYS search first."
     )
     default_tool_id: str = "web_search"
     search_result_instruction: str = (
