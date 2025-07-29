@@ -21,7 +21,7 @@ Audio Input → OpenAI Whisper → Ollama LLM + Web Search → Kokoro TTS → Au
 ```
 
 1. **Recording**: Push-to-talk captures audio input
-2. **Transcription**: Local OpenAI Whisper converts speech to text  
+2. **Transcription**: Local OpenAI Whisper converts speech to text
 3. **Processing**: Ollama LLM generates intelligent responses with web search when needed
 4. **Synthesis**: Kokoro TTS converts response back to speech using persona-specific voices
 
@@ -89,7 +89,7 @@ chatter/
 ## Dependencies
 
 - **gradio**: Web-based UI framework
-- **ollama**: Interface to Ollama models  
+- **ollama**: Interface to Ollama models
 - **kokoro**: Text-to-speech synthesis
 - **sounddevice**: Audio recording
 - **numpy**: Audio processing
