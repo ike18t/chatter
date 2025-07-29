@@ -207,7 +207,7 @@ def _get_or_load_model(model_name: str) -> ModelCache:
             **auth_kwargs
         ))
         # Move model to device - cast ensures proper typing
-        if device == "mps" or device == "cpu":
+        if device in {"mps", "cpu"}:
             model = model.to(device)
 
         print(f"Model {model_name} loaded successfully on {device}")

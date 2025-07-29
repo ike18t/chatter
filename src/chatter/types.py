@@ -21,7 +21,7 @@ class SerializedToolCall(TypedDict):
 
 class MessageDict(TypedDict):
     """TypedDict for message objects in the conversation.
-    
+
     This is used for both internal message handling and LLM API communication.
     """
 
