@@ -11,3 +11,7 @@ wheels/
 
 # Model files (downloaded automatically)
 asset/
+
+# Local environment overrides (keep .env committed for defaults)
+.env.local
+.env.*.local
