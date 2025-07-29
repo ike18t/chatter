@@ -4,7 +4,6 @@ Main voice assistant orchestrator.
 
 from collections.abc import Generator
 from enum import Enum
-from typing import Any, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -27,7 +26,7 @@ class RecordingState(Enum):
 
 
 # Type alias for Gradio yield
-ProcessingYield = Tuple[str, bool, list[list[str]], Tuple[int, NDArray[np.float32]] | None]
+ProcessingYield = tuple[str, bool, list[list[str]], tuple[int, NDArray[np.float32]] | None]
 GradioHistory = list[list[str]]
 
 
@@ -51,7 +50,7 @@ class VoiceAssistant:
         self.state = RecordingState.RECORDING
         return self.recorder.start_recording()
 
-    def stop_recording_and_process(self) -> Generator[ProcessingYield, None, None]:
+    def stop_recording_and_process(self) -> Generator[ProcessingYield]:
         """Stop recording and process the audio through the pipeline."""
         if self.state != RecordingState.RECORDING:
             yield "Not currently recording", False, [], None

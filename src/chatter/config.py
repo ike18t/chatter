@@ -5,6 +5,7 @@ Configuration settings and constants for the Chatter application.
 import os
 from dataclasses import dataclass
 
+
 # Audio processing constants
 MIN_AUDIO_DURATION = 0.1  # seconds
 MIN_AUDIO_RMS_THRESHOLD = 0.001

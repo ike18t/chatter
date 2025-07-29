@@ -1,5 +1,4 @@
 # Standard library imports
-import os
 
 # Load environment variables
 try:

@@ -13,7 +13,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 
 class SerializedToolCall(TypedDict):
     """TypedDict for serialized tool calls in assistant messages."""
-    
+
     id: str
     type: str
     function: dict[str, Any]  # Using Any to accommodate both string and other values
@@ -24,7 +24,7 @@ class MessageDict(TypedDict):
     
     This is used for both internal message handling and LLM API communication.
     """
-    
+
     role: str
     content: str
     tool_call_id: NotRequired[str | None]  # For tool response messages
@@ -51,6 +51,6 @@ class DeviceInfo(TypedDict):
 
 class ModelCache(TypedDict):
     """Cache for loaded model and tokenizer."""
-    
+
     model: PreTrainedModel
     tokenizer: PreTrainedTokenizer

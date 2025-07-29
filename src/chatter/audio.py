@@ -10,7 +10,11 @@ import numpy as np
 import sounddevice as sd
 from numpy.typing import NDArray
 
-from .config import AUDIO_TEST_DURATION, MIN_AUDIO_RMS_THRESHOLD, PERMISSION_TEST_SLEEP, Config
+from .config import (
+    AUDIO_TEST_DURATION,
+    MIN_AUDIO_RMS_THRESHOLD,
+    Config,
+)
 from .types import DeviceInfo
 
 
