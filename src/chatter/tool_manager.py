@@ -5,7 +5,9 @@ Handles tool definitions, execution, and integration with LLM services.
 """
 
 from dataclasses import dataclass
-from typing import Any, NotRequired, TypedDict
+from typing import Any
+
+from .types import MessageDict, SerializedToolCall
 
 
 class Function:
@@ -23,21 +25,6 @@ class ToolCall:
             name=function.get("name", ""),
             arguments=function.get("arguments", "")
         )
-
-
-class SerializedToolCall(TypedDict):
-    id: str
-    type: str
-    function: dict[str, Any]
-
-
-class MessageDict(TypedDict):
-    role: str
-    content: str
-    tool_call_id: NotRequired[str | None]  # For tool response messages
-    tool_calls: NotRequired[
-        list[SerializedToolCall]
-    ]  # For assistant messages with tool calls
 
 
 @dataclass(frozen=True)
@@ -234,7 +221,12 @@ class ToolManager:
         for tool_call in tool_calls:
             if tool_call.function.name == "web_search":
                 try:
-                    query = tool_call.function.arguments["query"]
+                    # Extract query from arguments safely
+                    arguments = tool_call.function.arguments
+                    if isinstance(arguments, dict):
+                        query = arguments.get("query", "")
+                    else:
+                        query = str(arguments)
                     print(f"🔍 Executing search for: {query}")
 
                     search_result = self.execute_tool("web_search", query=query)

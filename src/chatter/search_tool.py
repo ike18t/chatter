@@ -206,7 +206,9 @@ def _get_or_load_model(model_name: str) -> ModelCache:
             trust_remote_code=True,
             **auth_kwargs
         ))
-        model = cast(PreTrainedModel, model.to(device))
+        # Move model to device - cast ensures proper typing
+        if device == "mps" or device == "cpu":
+            model = model.to(device)
 
         print(f"Model {model_name} loaded successfully on {device}")
         return {"model": model, "tokenizer": tokenizer}
@@ -252,8 +254,13 @@ def _analyze_search_html_with_llm(html: str, query: str, config: SearchConfig) -
         # Prepare the messages in chat format
         messages = [{"role": "user", "content": analysis_prompt}]
 
-        # Apply chat template
-        input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        # Apply chat template - convert to compatible dict format
+        chat_messages = []
+        for msg in messages:
+            chat_msg = {"role": msg["role"], "content": msg["content"]}
+            chat_messages.append(chat_msg)
+            
+        input_text = tokenizer.apply_chat_template(chat_messages, tokenize=False, add_generation_prompt=True)
 
         # Tokenize
         inputs = tokenizer(input_text, return_tensors="pt", truncation=True, max_length=4096)
