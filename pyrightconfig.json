@@ -1,0 +1,19 @@
+{
+  "include": ["src", "tests"],
+  "exclude": ["**/__pycache__", "**/.DS_Store"],
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": "warning",
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "basic",
+
+  "reportUnknownMemberType": "warning",
+  "reportUnknownArgumentType": "warning",
+  "reportUnknownVariableType": "warning",
+  "reportCallIssue": "warning",
+  "reportArgumentType": "warning",
+
+  "stubPath": "./typings",
+  "reportUnnecessaryCast": "error"
+}
+

@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.DS_Store
 
 # Virtual environments
 .venv
@@ -15,3 +16,5 @@ asset/
 # Local environment overrides (keep .env committed for defaults)
 .env.local
 .env.*.local
+.aider*
+.env
