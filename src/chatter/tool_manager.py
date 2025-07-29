@@ -39,20 +39,26 @@ class ToolConfig:
         "or need recent data. Use this when you encounter knowledge gaps, "
         "need recent updates, or are asked about current events. "
         "CRITICAL: ALWAYS use web search for ANY question about current events, "
-        "politics, recent news, current office holders, or anything that could "
-        "have changed since your training. Do NOT rely on training data for "
-        "current information - ALWAYS search first."
+        "politics, recent news, current office holders, weather, or anything that could "
+        "have changed since your training. Specifically, ALWAYS search for questions about "
+        "presidents, elected officials, appointments, current events, or recent happenings. "
+        "Do NOT rely on training data for current information - ALWAYS search first and "
+        "clearly indicate you are searching in your response."
     )
     default_tool_id: str = "web_search"
     search_result_instruction: str = (
         "Current web search results (use this information):\n\n{search_result}\n\n"
         "Please base your response on the search results above, as they contain "
-        "more current information than your training data."
+        "more current information than your training data. Begin your response with "
+        "a phrase like 'Based on search results' or 'According to current information' "
+        "to clearly indicate you are using up-to-date information."
     )
     priority_message: str = (
         "You have received web search results. Use the factual information from "
         "these search results in your response, as they contain current information "
-        "that may be more accurate than your training data."
+        "that may be more accurate than your training data. Begin your response with "
+        "a phrase mentioning your search, such as 'Based on my search' or 'According to "
+        "search results' to clearly indicate you're using the latest information."
     )
 
 
