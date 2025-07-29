@@ -669,3 +669,4 @@ class VoiceChatInterface:
             )
 
         return interface
+
