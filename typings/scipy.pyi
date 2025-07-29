@@ -10,11 +10,11 @@ import numpy as np
 # Signal processing module
 class signal:
     """Signal processing functions."""
-    
+
     @staticmethod
     def resample(
-        x: NDArray[np.float32], 
-        num: int, 
+        x: NDArray[np.float32],
+        num: int,
         t: Optional[NDArray[np.float32]] = None,
         axis: int = 0,
         window: Optional[Union[str, tuple]] = None,

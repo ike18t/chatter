@@ -15,7 +15,7 @@ KokoroAudioChunk = Tuple[KokoroGeneratorState, KokoroPhonemeState, KokoroAudioDa
 
 class KPipeline:
     """Kokoro TTS Pipeline for text-to-speech synthesis."""
-    
+
     def __init__(
         self,
         model_path: Optional[str] = None,
@@ -24,7 +24,7 @@ class KPipeline:
         lang_code: Optional[str] = None,
         **kwargs: Any
     ) -> None: ...
-    
+
     def __call__(
         self,
         text: str,
@@ -32,7 +32,7 @@ class KPipeline:
         speed: Optional[float] = None,
         **kwargs: Any
     ) -> Iterator[KokoroAudioChunk]: ...  # Returns generator of (state, phonemes, audio)
-    
+
     def synthesize(
         self,
         text: str,

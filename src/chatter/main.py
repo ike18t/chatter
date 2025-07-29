@@ -1,6 +1,7 @@
 # Standard library imports
+import functools
+import os
 import re
-import subprocess
 import threading
 import time
 from collections.abc import Generator
@@ -9,13 +10,25 @@ from enum import Enum
 from pathlib import Path
 from typing import NotRequired, Optional, TypedDict, cast
 
+
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load .env file
+    load_dotenv(".env.local", override=True)  # Override with .env.local if it exists
+except ImportError:
+    pass  # python-dotenv not installed, skip
+
 # Third-party imports
 import gradio as gr
 import numpy as np
-import ollama
 import sounddevice as sd
+import torch
 import whisper
 from numpy.typing import NDArray
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
 
 # Local imports
 from .tool_manager import ToolManager
@@ -26,6 +39,11 @@ class SerializedToolCall(TypedDict):
     id: str
     type: str
     function: dict[str, str]
+
+
+class ModelCache(TypedDict):
+    model: PreTrainedModel
+    tokenizer: PreTrainedTokenizer
 
 
 class MessageDict(TypedDict):
@@ -99,12 +117,12 @@ class Config:
     after initialization, ensuring consistent behavior throughout the application.
     """
 
-    DEEPSEEK_MODEL: str = "llama3.1:8b"  # Known tool-capable model
-    WHISPER_MODEL: str = "tiny"
+    DEEPSEEK_MODEL: str = os.getenv("CHATTER_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+    WHISPER_MODEL: str = os.getenv("CHATTER_WHISPER_MODEL", "tiny")
     SAMPLE_RATE: int = 16000  # Standard rate for speech recognition
     TTS_SAMPLE_RATE: int = 24000  # Kokoro TTS optimal sample rate
-    SERVER_HOST: str = "0.0.0.0"
-    SERVER_PORT: int = 7860
+    SERVER_HOST: str = os.getenv("CHATTER_HOST", "0.0.0.0")
+    SERVER_PORT: int = int(os.getenv("CHATTER_PORT", "7860"))
     SYSTEM_PROMPT: str = """
         You are a friendly (but humorous) chat bot. Your output will be spoken so try to make it sound like natural language.
 
@@ -210,32 +228,60 @@ class PersonaManager:
         return self.voice_settings.get(persona_name, self.voice_settings["Default"])
 
 
+@functools.lru_cache(maxsize=2)  # Cache up to 2 models
+def load_model_and_tokenizer(model_name: str) -> ModelCache:
+    """Load and cache HuggingFace model and tokenizer."""
+    print(f"📥 Loading {model_name} from HuggingFace...")
+
+    # Get HuggingFace token if available
+    hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN")
+    if hf_token and hf_token.strip():
+        print("🔑 Using HuggingFace authentication token")
+        auth_kwargs = {"token": hf_token}
+    else:
+        print("⚠️  No HuggingFace token found - only public models will work")
+        auth_kwargs = {}
+
+    try:
+        # Try to load the tokenizer first (smaller download)
+        tokenizer = cast(PreTrainedTokenizer, AutoTokenizer.from_pretrained(model_name, **auth_kwargs))
+        print(f"✅ Tokenizer for {model_name} loaded successfully")
+
+        # Load the model with Mac Silicon optimizations
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        model = cast(PreTrainedModel, AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if device == "mps" else torch.float32,
+            trust_remote_code=True,
+            **auth_kwargs
+        ))
+        model = cast(PreTrainedModel, model.to(device))
+        print(f"✅ Model {model_name} loaded successfully on {device}")
+
+        return {"model": model, "tokenizer": tokenizer}
+
+    except Exception as e:
+        print(f"❌ Error loading model {model_name}: {e}")
+        if "gated repo" in str(e).lower():
+            print("💡 This model requires authentication. Please:")
+            print("   1. Get access at: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct")
+            print("   2. Create a token at: https://huggingface.co/settings/tokens")
+            print("   3. Add HUGGINGFACE_HUB_TOKEN=your_token to .env.local")
+        raise
+
+
 class ModelManager:
     """Manages model downloading and availability."""
 
     @staticmethod
     def ensure_deepseek_model(model_name: str) -> None:
-        """Ensure DeepSeek model is available, download if needed."""
-        try:
-            result = subprocess.run(
-                ["ollama", "list"], capture_output=True, text=True, check=True
-            )
-            if model_name in result.stdout:
-                print(f"✅ {model_name} is already available")
-                return
+        """Ensure HuggingFace model is available, download if needed."""
+        load_model_and_tokenizer(model_name)  # Just trigger the load
 
-            print(f"📥 Downloading {model_name}... (this may take a few minutes)")
-            subprocess.run(["ollama", "pull", model_name], check=True)
-            print(f"✅ {model_name} downloaded successfully")
-
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Error with Ollama: {e}")
-            print("Please make sure Ollama is installed and running")
-            raise
-        except FileNotFoundError:
-            print("❌ Ollama not found. Please install Ollama first:")
-            print("Visit: https://ollama.ai/download")
-            raise
+    @staticmethod
+    def get_model_and_tokenizer(model_name: str) -> ModelCache:
+        """Get cached model and tokenizer."""
+        return load_model_and_tokenizer(model_name)
 
     @staticmethod
     def ensure_kokoro_model() -> None:
@@ -616,15 +662,19 @@ class TranscriptionService:
 
 
 class LLMService:
-    """Handles LLM interactions."""
+    """Handles LLM interactions using HuggingFace transformers."""
 
     def __init__(self, model_name: str = Config.DEEPSEEK_MODEL):
         self.model_name = model_name
-        # Import search tool
         # Initialize tool manager
         self.tool_manager = ToolManager()
         self.search_available = self.tool_manager.has_tools
         self.tools = self.tool_manager.get_tool_definitions()
+
+        # Get model and tokenizer
+        cache = ModelManager.get_model_and_tokenizer(model_name)
+        self.model = cache["model"]
+        self.tokenizer = cache["tokenizer"]
 
     def get_response(self, messages: list[MessageDict]) -> tuple[str | None, str]:
         """Get response from LLM (non-streaming)."""
@@ -634,37 +684,32 @@ class LLMService:
             print(f"🔍 Model: {self.model_name}")
             print(f"🔍 Last message: {messages[-1]['content'][:100]}...")
 
-            # First call with tools available
-            response = ollama.chat(
-                model=self.model_name,
-                messages=messages,
-                tools=self.tools if self.tools else None,
-                stream=False,
-            )
+            # Convert messages to chat format and generate response
+            response_content = self._generate_response(messages)
 
-            # Check if the model wants to use tools
-            tool_calls = getattr(response.message, "tool_calls", None)
+            if response_content is None:
+                return None, "❌ Failed to generate response"
 
-            print(f"🔍 Model response received. Tool calls: {tool_calls is not None}")
-            print(
-                f"🔍 Response content: {response.message.content[:100] if response.message.content else 'None'}..."
-            )
+            # For now, we'll implement basic tool calling detection
+            # This is a simplified approach - in production you'd want more sophisticated tool parsing
+            if self.tools and ("search" in response_content.lower() or "find" in response_content.lower()):
+                # Simple tool calling simulation - extract query from response
+                tool_calls = self._detect_tool_calls(response_content)
 
-            if tool_calls:
-                print(f"🔧 Model made {len(tool_calls)} tool calls")
-                # Process tool calls using ToolManager
-                messages_with_tools = self.tool_manager.process_tool_calls(
-                    tool_calls, messages, response.message.content or ""
-                )
+                if tool_calls:
+                    print(f"🔧 Detected potential tool calls: {len(tool_calls)}")
+                    # Process tool calls using ToolManager
+                    messages_with_tools = self.tool_manager.process_tool_calls(
+                        tool_calls, messages, response_content
+                    )
 
-                # Get final response with tool results
-                final_response = ollama.chat(
-                    model=self.model_name, messages=messages_with_tools, stream=False
-                )
-
-                raw_response = final_response.message.content or ""
+                    # Get final response with tool results
+                    final_response = self._generate_response(messages_with_tools)
+                    raw_response = final_response or response_content
+                else:
+                    raw_response = response_content
             else:
-                raw_response = response.message.content or ""
+                raw_response = response_content
 
             cleaned_response = self.parse_deepseek_response(raw_response)
             return cleaned_response, "🤖 AI responded, generating speech..."
@@ -672,8 +717,57 @@ class LLMService:
         except Exception as e:
             return None, f"❌ Response Error: {str(e)}"
 
+    def _generate_response(self, messages: list[MessageDict]) -> str | None:
+        """Generate response using HuggingFace model."""
+        try:
+            # Apply chat template
+            input_text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+
+            # Tokenize
+            inputs = self.tokenizer(input_text, return_tensors="pt", truncation=True, max_length=4096)
+            inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=512,
+                    temperature=0.7,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id
+                )
+
+            # Decode response
+            response = self.tokenizer.decode(
+                outputs[0][inputs['input_ids'].shape[1]:],
+                skip_special_tokens=True
+            )
+
+            return response.strip() if response else None
+
+        except Exception as e:
+            print(f"Error generating response: {e}")
+            return None
+
+    def _detect_tool_calls(self, response: str) -> list:
+        """Simple tool call detection - replace with more sophisticated parsing."""
+        from .tool_manager import ToolCall
+
+        # This is a very basic implementation
+        # In production, you'd want proper function calling support
+        if "search" in response.lower():
+            # Extract potential search query (very basic)
+            import re
+            search_match = re.search(r'search.*?["\']([^"\']+)["\']', response.lower())
+            if search_match:
+                query = search_match.group(1)
+                return [ToolCall("web_search", {"name": "web_search", "arguments": {"query": query}})]
+        return []
+
     def get_streaming_response(self, messages: list[MessageDict]):
-        """Get streaming response from LLM."""
+        """Get streaming response from LLM (simplified non-streaming for now)."""
         try:
             print(f"🔍 STREAMING LLM Request: {len(messages)} messages")
             print(
@@ -682,87 +776,61 @@ class LLMService:
             print(f"🔍 STREAMING Model: {self.model_name}")
             print(f"🔍 STREAMING Last message: {messages[-1]['content'][:100]}...")
 
-            # First call with tools available
-            response_stream = ollama.chat(
-                model=self.model_name,
-                messages=messages,
-                tools=self.tools if self.tools else None,
-                stream=True,
-            )
+            # For now, we'll simulate streaming by generating the full response
+            # and yielding it in chunks
+            response_content = self._generate_response(messages)
 
-            accumulated_response = ""
-            tool_calls: list[ollama.ToolCall] = []
+            if response_content is None:
+                yield None, "❌ Failed to generate response"
+                return
 
-            # Process the streaming response
-            for chunk in response_stream:
-                if "message" in chunk:
-                    message = chunk["message"]
+            # Simulate streaming by yielding words
+            words = response_content.split()
+            accumulated = ""
 
-                    # Handle content
-                    if "content" in message and message["content"]:
-                        content = message["content"]
-                        accumulated_response += content
-                        yield content, accumulated_response
+            for _, word in enumerate(words):
+                accumulated += word + " "
+                yield word + " ", accumulated.strip()
 
-                    # Collect tool calls
-                    if "tool_calls" in message and message["tool_calls"]:
-                        print(
-                            f"🔧 STREAMING: Found tool calls in chunk: {len(message['tool_calls'])}"
-                        )
-                        tool_calls.extend(message["tool_calls"])
+                # Small delay to simulate streaming
+                import time
+                time.sleep(0.05)
 
-            # If there were tool calls, process them
-            print(f"🔍 STREAMING: Total tool calls collected: {len(tool_calls)}")
-            if tool_calls:
-                try:
-                    print("🔍 STREAMING: Processing tool calls...")
-                    print(f"🔍 STREAMING: Tool calls structure: {type(tool_calls[0])}")
-                    print(f"🔍 STREAMING: Tool call content: {tool_calls[0]}")
+            # Check for tool calls after full response
+            if self.tools and ("search" in response_content.lower() or "find" in response_content.lower()):
+                tool_calls = self._detect_tool_calls(response_content)
 
-                    print("🔍 STREAMING: About to yield search status...")
+                if tool_calls:
+                    print(f"🔧 STREAMING: Detected tool calls: {len(tool_calls)}")
+
                     yield (
                         "🔍 Searching...",
                         "🔍 Searching for additional information...",
                     )
-                    print("🔍 STREAMING: Yield completed successfully")
-                except Exception as e:
-                    print(f"❌ STREAMING: Error in tool processing: {e}")
-                    import traceback
 
-                    traceback.print_exc()
-                    return
+                    # Process tool calls using ToolManager
+                    try:
+                        messages_with_tools = self.tool_manager.process_tool_calls(
+                            tool_calls, messages, response_content
+                        )
+                        print(
+                            f"🔍 STREAMING: Tool processing completed with {len(messages_with_tools)} messages"
+                        )
+                    except Exception as e:
+                        print(f"❌ STREAMING: Error processing tools: {e}")
+                        return
 
-                # Process tool calls using ToolManager
-                try:
-                    messages_with_tools = self.tool_manager.process_tool_calls(
-                        tool_calls, messages, accumulated_response
-                    )
-                    print(
-                        f"🔍 STREAMING: Tool processing completed with {len(messages_with_tools)} messages"
-                    )
-                except Exception as e:
-                    print(f"❌ STREAMING: Error processing tools: {e}")
-                    return
+                    # Get final response with tool results
+                    final_response = self._generate_response(messages_with_tools)
+                    if final_response:
+                        # Stream the final response
+                        final_words = final_response.split()
+                        final_accumulated = ""
 
-                print(
-                    f"🔍 STREAMING: Making final call to model with {len(messages_with_tools)} messages"
-                )
-                print(
-                    f"🔍 STREAMING: Final message preview: {messages_with_tools[-1]['content'][:200]}..."
-                )
-
-                # Get final streaming response with tool results
-                final_stream = ollama.chat(
-                    model=self.model_name, messages=messages_with_tools, stream=True
-                )
-                print("🔍 STREAMING: Final stream started")
-
-                final_accumulated = ""
-                for chunk in final_stream:
-                    if "message" in chunk and "content" in chunk["message"]:
-                        content = chunk["message"]["content"]
-                        final_accumulated += content
-                        yield content, final_accumulated
+                        for word in final_words:
+                            final_accumulated += word + " "
+                            yield word + " ", final_accumulated.strip()
+                            time.sleep(0.05)
 
         except Exception as e:
             yield None, f"❌ Response Error: {str(e)}"

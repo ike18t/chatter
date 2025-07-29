@@ -5,11 +5,24 @@ Handles tool definitions, execution, and integration with LLM services.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 
-if TYPE_CHECKING:
-    from ollama import ToolCall
+class Function:
+    """Function object for tool calls."""
+    def __init__(self, name: str, arguments: str):
+        self.name = name
+        self.arguments = arguments
+
+
+class ToolCall:
+    """Tool call structure for function calling compatibility."""
+    def __init__(self, id: str, function: dict[str, Any]):
+        self.id = id
+        self.function = Function(
+            name=function.get("name", ""),
+            arguments=function.get("arguments", "")
+        )
 
 
 class SerializedToolCall(TypedDict):
@@ -159,7 +172,7 @@ class ToolManager:
             raise ToolExecutionError(f"Tool '{tool_name}' execution failed: {e}") from e
 
     def serialize_tool_calls(
-        self, tool_calls: list["ToolCall"]
+        self, tool_calls: list[ToolCall]
     ) -> list[SerializedToolCall]:
         """
         Convert tool calls to serializable format.
@@ -184,7 +197,7 @@ class ToolManager:
 
     def process_tool_calls(
         self,
-        tool_calls: list["ToolCall"],
+        tool_calls: list[ToolCall],
         messages: list[MessageDict],
         content: str = "",
     ) -> list[MessageDict]:

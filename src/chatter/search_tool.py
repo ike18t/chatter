@@ -4,11 +4,22 @@ Simple Web Search Tool
 A tool that uses LLM analysis to extract information from web search results.
 """
 
+import functools
+import os
 from dataclasses import dataclass
+from typing import TypedDict
 from urllib.parse import quote
 
-import ollama
 import requests
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
+
+
+class ModelCache(TypedDict):
+    model: PreTrainedModel
+    tokenizer: PreTrainedTokenizer
 
 
 # Constants
@@ -49,7 +60,7 @@ class SearchConfig:
     html_truncation_limit: int = 8000
 
     # LLM settings
-    llm_model: str = "llama3.1:8b"
+    llm_model: str = "meta-llama/Llama-3.1-8B-Instruct"
 
     # HTTP settings
     user_agent: str = (
@@ -174,6 +185,37 @@ def _fetch_search_html(query: str, config: SearchConfig) -> str:
         return ""
 
 
+@functools.lru_cache(maxsize=1)  # Only cache 1 model for search
+def _get_or_load_model(model_name: str) -> ModelCache:
+    """Get or load the HuggingFace model and tokenizer."""
+    print(f"Loading model {model_name}...")
+
+    # Get HuggingFace token if available
+    hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN")
+    auth_kwargs = {"token": hf_token} if hf_token and hf_token.strip() else {}
+
+    try:
+        from typing import cast
+        tokenizer = cast(PreTrainedTokenizer, AutoTokenizer.from_pretrained(model_name, **auth_kwargs))
+
+        # Use Mac Silicon optimizations
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        model = cast(PreTrainedModel, AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if device == "mps" else torch.float32,
+            trust_remote_code=True,
+            **auth_kwargs
+        ))
+        model = cast(PreTrainedModel, model.to(device))
+
+        print(f"Model {model_name} loaded successfully on {device}")
+        return {"model": model, "tokenizer": tokenizer}
+
+    except Exception as e:
+        print(f"Failed to load model {model_name}: {e}")
+        raise
+
+
 def _analyze_search_html_with_llm(html: str, query: str, config: SearchConfig) -> str:
     """
     Use LLM to analyze search HTML and return formatted search results.
@@ -202,18 +244,39 @@ def _analyze_search_html_with_llm(html: str, query: str, config: SearchConfig) -
             query=query, html=truncated_html
         )
 
-        response = ollama.chat(
-            model=config.llm_model,
-            messages=[{"role": "user", "content": analysis_prompt}],
-            stream=False,
-        )
+        # Get model and tokenizer
+        model_cache = _get_or_load_model(config.llm_model)
+        model = model_cache["model"]
+        tokenizer = model_cache["tokenizer"]
 
-        analysis_result = response.message.content
-        if not analysis_result:
+        # Prepare the messages in chat format
+        messages = [{"role": "user", "content": analysis_prompt}]
+
+        # Apply chat template
+        input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+        # Tokenize
+        inputs = tokenizer(input_text, return_tensors="pt", truncation=True, max_length=4096)
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+
+        # Generate response
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=512,
+                temperature=0.7,
+                do_sample=True,
+                pad_token_id=tokenizer.eos_token_id
+            )
+
+        # Decode response
+        response = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
+
+        if not response:
             print("LLM analysis returned no content")
             return ""
 
-        analysis_result = analysis_result.strip()
+        analysis_result = response.strip()
         print(f"LLM analysis completed, length: {len(analysis_result)}")
 
         return analysis_result
