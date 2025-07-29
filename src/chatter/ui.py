@@ -3,7 +3,7 @@ User interface components using Gradio.
 """
 
 import time
-from typing import Dict, Any, Tuple, List
+from typing import Any
 
 import gradio as gr
 import numpy as np
@@ -14,9 +14,9 @@ from .config import Config
 
 
 # Type definitions
-GradioHistory = List[List[str]]
-GradioUpdate = Dict[str, Any]
-AudioTuple = Tuple[int, NDArray[np.float32]] | None
+GradioHistory = list[list[str]]
+GradioUpdate = dict[str, Any]
+AudioTuple = tuple[int, NDArray[np.float32]] | None
 
 
 class VoiceChatInterface:
@@ -25,7 +25,7 @@ class VoiceChatInterface:
     def __init__(self, assistant: VoiceAssistant):
         self.assistant = assistant
 
-    def respond_to_message(self, message: str, _history: List[List[str]]) -> str:
+    def respond_to_message(self, message: str, _history: list[list[str]]) -> str:
         """Process a text message and return AI response."""
         # Add user message to conversation
         self.assistant.conversation.add_user_message(message)
@@ -51,6 +51,8 @@ class VoiceChatInterface:
 
     def create_interface(self) -> gr.Blocks:
         """Create a custom interface that combines ChatInterface with voice controls."""
+        # Import RecordingState here to fix the undefined name error
+        from .assistant import RecordingState
 
         with gr.Blocks(
             title="Chatter",
