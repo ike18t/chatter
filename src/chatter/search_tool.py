@@ -259,7 +259,7 @@ def _analyze_search_html_with_llm(html: str, query: str, config: SearchConfig) -
         for msg in messages:
             chat_msg = {"role": msg["role"], "content": msg["content"]}
             chat_messages.append(chat_msg)
-            
+
         input_text = tokenizer.apply_chat_template(chat_messages, tokenize=False, add_generation_prompt=True)
 
         # Tokenize
