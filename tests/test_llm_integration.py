@@ -6,7 +6,9 @@ from typing import cast
 
 import pytest
 
-from chatter.main import Config, LLMService, MessageDict
+from chatter.config import Config
+from chatter.llm import LLMService
+from chatter.types import MessageDict
 
 
 class TestLLMIntegration:

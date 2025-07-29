@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from chatter.main import ConversationManager, MessageDict, PersonaManager
+from chatter.conversation import ConversationManager
+from chatter.persona import PersonaManager
+from chatter.types import MessageDict
 
 
 class TestPersonaManager:
